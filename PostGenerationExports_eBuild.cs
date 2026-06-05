@@ -1,11 +1,12 @@
 // PostGenerationExports_eBuild.cs
 //
-// Exports PDF and summarized parts list to the project's DOCS folder
-// after eBuild generation. Log is written to the same DOCS folder.
+// Exports the summarized parts list and a project PDF to the project's
+// DOCS folder after eBuild generation. Log is written to the same folder.
 //
-// PROBE MODE: the PDF export action name is not yet confirmed for this
-// EPLAN module, so a list of candidate commands is tried in one run. The
-// log shows which (if any) returns True. Once known, collapse to the winner.
+// PDF export uses the documented EPLAN 'export' action with
+// TYPE=PDFPROJECTSCHEME, invoked via ActionCallingContext (the canonical,
+// path-safe form). Earlier failures were wrong /TYPE values, not a blocked
+// context. Ref: EPLAN 'export' action docs + github.com/musray/PDFPerLocation.
 
 using System;
 using System.IO;
@@ -14,7 +15,7 @@ using Eplan.EplApi.ApplicationFramework;
 
 public class PostGenerationExports
 {
-    private const string ScriptVersion   = "2026-06-05.7";
+    private const string ScriptVersion   = "2026-06-05.8";
     private const string PdfScheme       = "Default";
     private const string PartsListScheme = "Summarized parts list";
     private const string Language        = "en_US";
@@ -22,18 +23,37 @@ public class PostGenerationExports
     private CommandLineInterpreter _cli;
     private StringBuilder _log;
 
-    // Run one action, log its result, never throw out of the batch.
+    // Execute a command STRING, log the result, never throw out of the batch.
     private bool Try(string label, string command)
     {
         try
         {
             bool ok = _cli.Execute(command);
-            _log.AppendLine(label.PadRight(34) + ": " + ok);
+            _log.AppendLine(label.PadRight(30) + ": " + ok);
             return ok;
         }
         catch (Exception ex)
         {
-            _log.AppendLine(label.PadRight(34) + ": EXCEPTION " + ex.Message);
+            _log.AppendLine(label.PadRight(30) + ": EXCEPTION " + ex.Message);
+            return false;
+        }
+    }
+
+    // Execute an action via ActionCallingContext (key/value pairs), log result.
+    private bool TryCtx(string label, string action, params string[] kv)
+    {
+        try
+        {
+            ActionCallingContext ctx = new ActionCallingContext();
+            for (int i = 0; i + 1 < kv.Length; i += 2)
+                ctx.AddParameter(kv[i], kv[i + 1]);
+            bool ok = _cli.Execute(action, ctx);
+            _log.AppendLine(label.PadRight(30) + ": " + ok);
+            return ok;
+        }
+        catch (Exception ex)
+        {
+            _log.AppendLine(label.PadRight(30) + ": EXCEPTION " + ex.Message);
             return false;
         }
     }
@@ -55,32 +75,33 @@ public class PostGenerationExports
         string pdfFile   = Path.Combine(docsPath, projectBase + ".pdf");
         string partsFile = Path.Combine(docsPath, "Parts_List.xlsx");
 
-        string proj = " /PROJECTNAME:\"" + ProjectName + "\"";
-        string pdf  = " /EXPORTFILE:\"" + pdfFile + "\"";
-        string pscm = " /EXPORTSCHEME:\"" + PdfScheme + "\"";
-
-        // ---- Parts list (label action + /LANGUAGE, confirmed param) ----
+        // ---- Parts list (label action + /LANGUAGE, confirmed working) ----
         Try("PL label",
             "label /CONFIGSCHEME:\"" + PartsListScheme + "\" /EXPORTFILE:\"" +
-            partsFile + "\" /LANGUAGE:" + Language + proj);
+            partsFile + "\" /LANGUAGE:" + Language +
+            " /PROJECTNAME:\"" + ProjectName + "\"");
 
-        // ---- PDF: 'export' and 'print' are real actions; probe parameter
-        //      shapes. Watch the eBuild SYSTEM MESSAGES window for the precise
-        //      "parameter X missing" hints (same way 'label' revealed /LANGUAGE).
-        string[][] pdfCandidates = new string[][]
-        {
-            new[] { "export EXPORTFILE+SCHEME",   "export" + pdf + pscm + proj },
-            new[] { "export DESTINATIONPATH",     "export /DESTINATIONPATH:\"" + pdfFile + "\"" + pscm + proj },
-            new[] { "export EXPORTMEDIA",         "export /EXPORTMEDIA:\"" + pdfFile + "\"" + pscm + proj },
-            new[] { "export TYPE:PDF",            "export /TYPE:PDF" + pdf + pscm + proj },
-            new[] { "print EXPORTFILE+SCHEME",    "print" + pdf + pscm + proj },
-            new[] { "print OUTPUTFILE+SCHEME",    "print /OUTPUTFILE:\"" + pdfFile + "\" /SCHEME:\"" + PdfScheme + "\"" + proj },
-        };
+        // ---- PDF: correct action is 'export' with TYPE=PDFPROJECTSCHEME ----
+        // Primary: ActionCallingContext (path-safe, documented form).
+        bool pdfOk = TryCtx("PDF ctx PDFPROJECTSCHEME", "export",
+            "TYPE",        "PDFPROJECTSCHEME",
+            "EXPORTSCHEME", PdfScheme,
+            "EXPORTFILE",   pdfFile,
+            "PROJECTNAME",  ProjectName,
+            "LANGUAGE",     Language);
 
-        foreach (string[] c in pdfCandidates)
-        {
-            if (Try(c[0], c[1])) break;
-        }
+        // Fallback: equivalent command-string form, in case ctx path differs.
+        if (!pdfOk)
+            pdfOk = Try("PDF cli PDFPROJECTSCHEME",
+                "export /TYPE:PDFPROJECTSCHEME" +
+                " /EXPORTFILE:\"" + pdfFile + "\"" +
+                " /EXPORTSCHEME:\"" + PdfScheme + "\"" +
+                " /LANGUAGE:" + Language +
+                " /PROJECTNAME:\"" + ProjectName + "\"");
+
+        // Independent confirmation: did the file actually land on disk?
+        _log.AppendLine("PDF file exists : " + File.Exists(pdfFile));
+        _log.AppendLine("PDF path        : " + pdfFile);
 
         try { File.AppendAllText(logPath, _log.ToString() + Environment.NewLine); } catch { }
     }
