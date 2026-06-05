@@ -2,18 +2,12 @@
 //
 // DEPLOYMENT copy for eBuild Script-Typicals. Runs unattended after the
 // Project Builder finishes generation. No dialogs: results are appended to a
-// log file so a hands-off generation run is never blocked waiting for a click.
+// log file in the project's DOCS folder.
 //
 // Setup:
 //   Attach this under Script-Typicals in the Designer. ProjectName is supplied
 //   automatically by the generator and must NOT be declared as a script
 //   parameter in the Designer.
-//
-// Notes:
-//   - The actions run against the just-generated (active) project, the same
-//     way the manual test did against the selected project. No PROJECTNAME is
-//     passed, so USESELECTION:0 stays valid (the two are mutually exclusive).
-//   - Edit LogPath if you want the log somewhere more convenient than temp.
 
 using System;
 using System.IO;
@@ -22,18 +16,16 @@ using Eplan.EplApi.ApplicationFramework;
 
 public class PostGenerationNumbering
 {
-    // Scheme names exactly as they appear in the project settings (case sensitive).
     private const string DeviceScheme     = "ECLIPSE ROW_IDENTIFIER";
     private const string ConnectionScheme = "Eclipse NFPA Standard without PLC address";
-
-    // Silent log. Resolves to the Windows temp folder, e.g.
-    // C:\Users\<you>\AppData\Local\Temp\PostGenerationNumbering.log
-    private static readonly string LogPath =
-        Path.Combine(Path.GetTempPath(), "PostGenerationNumbering.log");
 
     [Start]
     public void RunFromEBuild(string ProjectName)
     {
+        string docsPath = Path.Combine(Path.ChangeExtension(ProjectName, ".edb"), "DOCS");
+        Directory.CreateDirectory(docsPath);
+        string logPath = Path.Combine(docsPath, "PostGenerationNumbering.log");
+
         CommandLineInterpreter cli = new CommandLineInterpreter();
         StringBuilder log = new StringBuilder();
         log.AppendLine("=== Post-generation numbering " + DateTime.Now + " ===");
@@ -41,13 +33,9 @@ public class PostGenerationNumbering
 
         try
         {
-            // 1) Regenerate connections so definition points exist.
             bool r1 = cli.Execute("generate /TYPE:CONNECTIONS");
             log.AppendLine("generate connections : " + r1);
 
-            // 2) Renumber DEVICE tags across the whole project.
-            //    Use PROJECTNAME instead of USESELECTION so the action targets
-            //    the correct project in the eBuild context.
             string devCmd =
                 "renumber /TYPE:DEVICES /CONFIGSCHEME:\"" + DeviceScheme + "\" " +
                 "/PROJECTNAME:\"" + ProjectName + "\" " +
@@ -56,7 +44,6 @@ public class PostGenerationNumbering
             bool r2 = cli.Execute(devCmd);
             log.AppendLine("renumber devices     : " + r2);
 
-            // 3) Renumber CONNECTIONS (wire numbers).
             string conCmd =
                 "renumber /TYPE:CONNECTIONS /CONFIGSCHEME:\"" + ConnectionScheme + "\" " +
                 "/PROJECTNAME:\"" + ProjectName + "\"";
@@ -68,19 +55,6 @@ public class PostGenerationNumbering
             log.AppendLine("EXCEPTION: " + ex.Message);
         }
 
-        WriteLog(log.ToString());
-        return;
-    }
-
-    private static void WriteLog(string text)
-    {
-        try
-        {
-            File.AppendAllText(LogPath, text + Environment.NewLine);
-        }
-        catch
-        {
-            // Never let a logging failure break a generation run.
-        }
+        try { File.AppendAllText(logPath, log.ToString() + Environment.NewLine); } catch { }
     }
 }

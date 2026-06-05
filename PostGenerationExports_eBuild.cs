@@ -1,9 +1,7 @@
 // PostGenerationExports_eBuild.cs
 //
 // Exports PDF and summarized parts list to the project's DOCS folder
-// after eBuild generation. Runs unattended — results logged to temp.
-//
-// Log: %TEMP%\PostGenerationExports.log
+// after eBuild generation. Log is written to the same DOCS folder.
 
 using System;
 using System.IO;
@@ -15,14 +13,13 @@ public class PostGenerationExports
     private const string PdfScheme       = "Default";
     private const string PartsListScheme = "Summarized parts list";
 
-    private static readonly string LogPath =
-        Path.Combine(Path.GetTempPath(), "PostGenerationExports.log");
-
     [Start]
     public void RunFromEBuild(string ProjectName)
     {
         string docsPath    = Path.Combine(Path.ChangeExtension(ProjectName, ".edb"), "DOCS");
         string projectBase = Path.GetFileNameWithoutExtension(ProjectName);
+        string logPath     = Path.Combine(docsPath, "PostGenerationExports.log");
+        Directory.CreateDirectory(docsPath);
 
         CommandLineInterpreter cli = new CommandLineInterpreter();
         StringBuilder log = new StringBuilder();
@@ -32,15 +29,12 @@ public class PostGenerationExports
 
         try
         {
-            Directory.CreateDirectory(docsPath);
-
             // 1) Export full project PDF.
             string pdfFile = Path.Combine(docsPath, projectBase + ".pdf");
             bool r1 = cli.Execute(
                 "XGedExportPDF" +
                 " /EXPORTFILE:\"" + pdfFile + "\"" +
-                " /EXPORTSCHEME:\"" + PdfScheme + "\"" +
-                " /PROJECTNAME:\"" + ProjectName + "\"");
+                " /EXPORTSCHEME:\"" + PdfScheme + "\"");
             log.AppendLine("export PDF        : " + r1 + "  -> " + pdfFile);
 
             // 2) Export summarized parts list to Excel.
@@ -57,12 +51,6 @@ public class PostGenerationExports
             log.AppendLine("EXCEPTION: " + ex.Message);
         }
 
-        WriteLog(log.ToString());
-    }
-
-    private static void WriteLog(string text)
-    {
-        try { File.AppendAllText(LogPath, text + Environment.NewLine); }
-        catch { }
+        try { File.AppendAllText(logPath, log.ToString() + Environment.NewLine); } catch { }
     }
 }
