@@ -58,7 +58,8 @@ public class PostGenerationNumbering
 
             // 3) Renumber CONNECTIONS (wire numbers).
             string conCmd =
-                "renumber /TYPE:CONNECTIONS /CONFIGSCHEME:\"" + ConnectionScheme + "\"";
+                "renumber /TYPE:CONNECTIONS /CONFIGSCHEME:\"" + ConnectionScheme + "\" " +
+                "/PROJECTNAME:\"" + ProjectName + "\"";
             bool r3 = cli.Execute(conCmd);
             log.AppendLine("renumber connections : " + r3);
         }
