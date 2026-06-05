@@ -15,7 +15,7 @@ using Eplan.EplApi.ApplicationFramework;
 
 public class PostGenerationExports
 {
-    private const string ScriptVersion   = "2026-06-05.8";
+    private const string ScriptVersion   = "2026-06-05.9";
     private const string PdfScheme       = "Default";
     private const string PartsListScheme = "Summarized parts list";
     private const string Language        = "en_US";
@@ -82,21 +82,38 @@ public class PostGenerationExports
             " /PROJECTNAME:\"" + ProjectName + "\"");
 
         // ---- PDF: correct action is 'export' with TYPE=PDFPROJECTSCHEME ----
-        // Primary: ActionCallingContext (path-safe, documented form).
-        bool pdfOk = TryCtx("PDF ctx PDFPROJECTSCHEME", "export",
+        // Try several parameter shapes in ONE run; stop at first success. The
+        // file-exists check below is the ground truth regardless of which wins.
+
+        // 1) ctx, full params (documented, path-safe form).
+        bool pdfOk = TryCtx("PDF ctx full", "export",
             "TYPE",        "PDFPROJECTSCHEME",
             "EXPORTSCHEME", PdfScheme,
             "EXPORTFILE",   pdfFile,
             "PROJECTNAME",  ProjectName,
             "LANGUAGE",     Language);
 
-        // Fallback: equivalent command-string form, in case ctx path differs.
+        // 2) ctx, no LANGUAGE (in case export rejects the language code).
         if (!pdfOk)
-            pdfOk = Try("PDF cli PDFPROJECTSCHEME",
+            pdfOk = TryCtx("PDF ctx no-LANG", "export",
+                "TYPE",        "PDFPROJECTSCHEME",
+                "EXPORTSCHEME", PdfScheme,
+                "EXPORTFILE",   pdfFile,
+                "PROJECTNAME",  ProjectName);
+
+        // 3) ctx, no PROJECTNAME (use active project, as the reference example).
+        if (!pdfOk)
+            pdfOk = TryCtx("PDF ctx no-PROJ", "export",
+                "TYPE",        "PDFPROJECTSCHEME",
+                "EXPORTSCHEME", PdfScheme,
+                "EXPORTFILE",   pdfFile);
+
+        // 4) command-string equivalent, in case the ctx path behaves differently.
+        if (!pdfOk)
+            pdfOk = Try("PDF cli full",
                 "export /TYPE:PDFPROJECTSCHEME" +
                 " /EXPORTFILE:\"" + pdfFile + "\"" +
                 " /EXPORTSCHEME:\"" + PdfScheme + "\"" +
-                " /LANGUAGE:" + Language +
                 " /PROJECTNAME:\"" + ProjectName + "\"");
 
         // Independent confirmation: did the file actually land on disk?
