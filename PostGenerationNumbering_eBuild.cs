@@ -61,11 +61,6 @@ public class PostGenerationNumbering
                 "renumber /TYPE:CONNECTIONS /CONFIGSCHEME:\"" + ConnectionScheme + "\"";
             bool r3 = cli.Execute(conCmd);
             log.AppendLine("renumber connections : " + r3);
-
-            // Save immediately so eBuild's final project save does not
-            // overwrite the renumbered state with an earlier snapshot.
-            bool r4 = cli.Execute("XGedSaveProject");
-            log.AppendLine("save project         : " + r4);
         }
         catch (Exception ex)
         {
