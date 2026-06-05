@@ -46,9 +46,12 @@ public class PostGenerationNumbering
             log.AppendLine("generate connections : " + r1);
 
             // 2) Renumber DEVICE tags across the whole project.
+            //    Use PROJECTNAME instead of USESELECTION so the action targets
+            //    the correct project in the eBuild context.
             string devCmd =
                 "renumber /TYPE:DEVICES /CONFIGSCHEME:\"" + DeviceScheme + "\" " +
-                "/STARTVALUE:1 /STEPVALUE:1 /USESELECTION:0 " +
+                "/PROJECTNAME:\"" + ProjectName + "\" " +
+                "/STARTVALUE:1 /STEPVALUE:1 " +
                 "/ALSONUMERATEDBYPLC:0 /POSTNUMERATE:0";
             bool r2 = cli.Execute(devCmd);
             log.AppendLine("renumber devices     : " + r2);
