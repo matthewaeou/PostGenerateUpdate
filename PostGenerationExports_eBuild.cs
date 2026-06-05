@@ -14,6 +14,7 @@ using Eplan.EplApi.ApplicationFramework;
 
 public class PostGenerationExports
 {
+    private const string ScriptVersion   = "2026-06-05.7";
     private const string PdfScheme       = "Default";
     private const string PartsListScheme = "Summarized parts list";
     private const string Language        = "en_US";
@@ -48,6 +49,7 @@ public class PostGenerationExports
         _cli = new CommandLineInterpreter();
         _log = new StringBuilder();
         _log.AppendLine("=== Post-generation exports " + DateTime.Now + " ===");
+        _log.AppendLine("Script version : " + ScriptVersion);
         _log.AppendLine("Project : " + ProjectName);
 
         string pdfFile   = Path.Combine(docsPath, projectBase + ".pdf");

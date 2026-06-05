@@ -16,6 +16,7 @@ using Eplan.EplApi.ApplicationFramework;
 
 public class PostGenerationNumbering
 {
+    private const string ScriptVersion    = "2026-06-05.7";
     private const string DeviceScheme     = "ECLIPSE ROW_IDENTIFIER";
     private const string ConnectionScheme = "Eclipse NFPA Standard without PLC address";
 
@@ -29,6 +30,7 @@ public class PostGenerationNumbering
         CommandLineInterpreter cli = new CommandLineInterpreter();
         StringBuilder log = new StringBuilder();
         log.AppendLine("=== Post-generation numbering " + DateTime.Now + " ===");
+        log.AppendLine("Script version : " + ScriptVersion);
         log.AppendLine("Project: " + ProjectName);
 
         try
