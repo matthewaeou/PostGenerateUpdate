@@ -62,17 +62,17 @@ public class PostGenerationExports
             "label /CONFIGSCHEME:\"" + PartsListScheme + "\" /EXPORTFILE:\"" +
             partsFile + "\" /LANGUAGE:" + Language + proj);
 
-        // ---- PDF: probe candidate action names, stop on first success ----
+        // ---- PDF: 'export' and 'print' are real actions; probe parameter
+        //      shapes. Watch the eBuild SYSTEM MESSAGES window for the precise
+        //      "parameter X missing" hints (same way 'label' revealed /LANGUAGE).
         string[][] pdfCandidates = new string[][]
         {
-            new[] { "PDF export",                "export"                  + pdf + pscm + proj },
-            new[] { "PDF print",                 "print"                   + pdf + pscm + proj },
-            new[] { "PDF EplApiExportPdf",       "EplApiExportPdf"         + pdf + pscm + proj },
-            new[] { "PDF PdfExport",             "PdfExport"               + pdf + pscm + proj },
-            new[] { "PDF XPrjActionExportPdf",   "XPrjActionExportPdf"     + pdf + pscm + proj },
-            new[] { "PDF XMExportPdfPrjAction",  "XMExportPdfPrjAction"    + pdf + pscm + proj },
-            new[] { "PDF ExportPdfAction",       "ExportPdfAction"         + pdf + pscm + proj },
-            new[] { "PDF XGedExportImageToPDF",  "XGedExportImageToPDF"    + pdf + pscm + proj },
+            new[] { "export EXPORTFILE+SCHEME",   "export" + pdf + pscm + proj },
+            new[] { "export DESTINATIONPATH",     "export /DESTINATIONPATH:\"" + pdfFile + "\"" + pscm + proj },
+            new[] { "export EXPORTMEDIA",         "export /EXPORTMEDIA:\"" + pdfFile + "\"" + pscm + proj },
+            new[] { "export TYPE:PDF",            "export /TYPE:PDF" + pdf + pscm + proj },
+            new[] { "print EXPORTFILE+SCHEME",    "print" + pdf + pscm + proj },
+            new[] { "print OUTPUTFILE+SCHEME",    "print /OUTPUTFILE:\"" + pdfFile + "\" /SCHEME:\"" + PdfScheme + "\"" + proj },
         };
 
         foreach (string[] c in pdfCandidates)
