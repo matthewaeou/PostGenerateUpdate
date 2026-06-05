@@ -12,6 +12,7 @@ public class PostGenerationExports
 {
     private const string PdfScheme       = "Default";
     private const string PartsListScheme = "Summarized parts list";
+    private const string Language        = "en_US";
 
     [Start]
     public void RunFromEBuild(string ProjectName)
@@ -31,49 +32,41 @@ public class PostGenerationExports
             string pdfFile   = Path.Combine(docsPath, projectBase + ".pdf");
             string partsFile = Path.Combine(docsPath, "Parts_List.xlsx");
 
-            // --- PDF: try known action name variants ---
+            // --- Parts list: label action needs /LANGUAGE ---
+            bool r2 = cli.Execute(
+                "label" +
+                " /CONFIGSCHEME:\"" + PartsListScheme + "\"" +
+                " /EXPORTFILE:\"" + partsFile + "\"" +
+                " /LANGUAGE:" + Language +
+                " /PROJECTNAME:\"" + ProjectName + "\"");
+            log.AppendLine("PL  label +LANGUAGE +PROJECTNAME  : " + r2);
+
+            // --- PDF: try remaining action name candidates ---
             bool r1a = cli.Execute(
-                "XGedExportPDF" +
+                "EPlanExportPDF" +
                 " /EXPORTFILE:\"" + pdfFile + "\"" +
                 " /EXPORTSCHEME:\"" + PdfScheme + "\"" +
                 " /PROJECTNAME:\"" + ProjectName + "\"");
-            log.AppendLine("PDF XGedExportPDF +PROJECTNAME   : " + r1a);
+            log.AppendLine("PDF EPlanExportPDF                : " + r1a);
 
             if (!r1a)
             {
                 bool r1b = cli.Execute(
-                    "XEsExportPDF" +
+                    "XPrjActionPDFExport" +
                     " /EXPORTFILE:\"" + pdfFile + "\"" +
                     " /EXPORTSCHEME:\"" + PdfScheme + "\"" +
                     " /PROJECTNAME:\"" + ProjectName + "\"");
-                log.AppendLine("PDF XEsExportPDF +PROJECTNAME    : " + r1b);
+                log.AppendLine("PDF XPrjActionPDFExport           : " + r1b);
             }
 
-            // --- Parts list: try known action name variants ---
-            bool r2a = cli.Execute(
-                "XPrjActionLabelingExport" +
-                " /CONFIGSCHEME:\"" + PartsListScheme + "\"" +
-                " /EXPORTFILE:\"" + partsFile + "\"" +
-                " /PROJECTNAME:\"" + ProjectName + "\"");
-            log.AppendLine("PL  XPrjActionLabelingExport      : " + r2a);
-
-            if (!r2a)
+            if (!r1a)
             {
-                bool r2b = cli.Execute(
-                    "label" +
-                    " /CONFIGSCHEME:\"" + PartsListScheme + "\"" +
-                    " /EXPORTFILE:\"" + partsFile + "\"");
-                log.AppendLine("PL  label -PROJECTNAME            : " + r2b);
-            }
-
-            if (!r2a)
-            {
-                bool r2c = cli.Execute(
-                    "label" +
-                    " /SETTINGS:\"" + PartsListScheme + "\"" +
-                    " /EXPORTFILE:\"" + partsFile + "\"" +
+                bool r1c = cli.Execute(
+                    "XGedPrintPDF" +
+                    " /EXPORTFILE:\"" + pdfFile + "\"" +
+                    " /EXPORTSCHEME:\"" + PdfScheme + "\"" +
                     " /PROJECTNAME:\"" + ProjectName + "\"");
-                log.AppendLine("PL  label /SETTINGS +PROJECTNAME  : " + r2c);
+                log.AppendLine("PDF XGedPrintPDF                  : " + r1c);
             }
         }
         catch (Exception ex)
