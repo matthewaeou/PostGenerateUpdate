@@ -19,6 +19,7 @@ using System.Text;
 using Eplan.EplApi.ApplicationFramework;
 using Eplan.EplApi.HEServices;
 using Eplan.EplApi.DataModel;
+using Eplan.EplApi.Base;          // Decider, EnumDecisionType, EnumDecisionReturn
 
 public class FinalizeProjectManual
 {
