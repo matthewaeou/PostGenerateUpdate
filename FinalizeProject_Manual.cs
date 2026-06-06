@@ -22,8 +22,8 @@ using Eplan.EplApi.DataModel;
 
 public class FinalizeProjectManual
 {
-    private const string ScriptVersion   = "2026-06-05.9";
-    private const string PdfScheme       = "Default";
+    private const string ScriptVersion   = "2026-06-05.10";
+    private const string PdfScheme       = "EPLAN_default_value";
     private const string PartsListScheme = "Summarized parts list";
     private const string Language        = "en_US";
 

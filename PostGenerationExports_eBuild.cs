@@ -15,8 +15,10 @@ using Eplan.EplApi.ApplicationFramework;
 
 public class PostGenerationExports
 {
-    private const string ScriptVersion   = "2026-06-05.9";
-    private const string PdfScheme       = "Default";
+    private const string ScriptVersion   = "2026-06-05.10";
+    // Scheme NAME (not the dialog label). EPLAN reported the valid name as
+    // 'EPLAN_default_value' — the PDF dialog just displays it as "Default".
+    private const string PdfScheme       = "EPLAN_default_value";
     private const string PartsListScheme = "Summarized parts list";
     private const string Language        = "en_US";
 
