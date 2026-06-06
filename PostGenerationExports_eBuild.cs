@@ -15,7 +15,7 @@ using Eplan.EplApi.ApplicationFramework;
 
 public class PostGenerationExports
 {
-    private const string ScriptVersion   = "2026-06-05.10";
+    private const string ScriptVersion   = "2026-06-05.11";
     // Scheme NAME (not the dialog label). EPLAN reported the valid name as
     // 'EPLAN_default_value' — the PDF dialog just displays it as "Default".
     private const string PdfScheme       = "EPLAN_default_value";
@@ -83,40 +83,15 @@ public class PostGenerationExports
             partsFile + "\" /LANGUAGE:" + Language +
             " /PROJECTNAME:\"" + ProjectName + "\"");
 
-        // ---- PDF: correct action is 'export' with TYPE=PDFPROJECTSCHEME ----
-        // Try several parameter shapes in ONE run; stop at first success. The
-        // file-exists check below is the ground truth regardless of which wins.
-
-        // 1) ctx, full params (documented, path-safe form).
-        bool pdfOk = TryCtx("PDF ctx full", "export",
+        // ---- PDF: 'export' action, whole project, via ActionCallingContext.
+        //      Scheme NAME is "EPLAN_default_value" (the dialog labels it
+        //      "Default"). Confirmed working in the eBuild generation context.
+        TryCtx("PDF export", "export",
             "TYPE",        "PDFPROJECTSCHEME",
             "EXPORTSCHEME", PdfScheme,
             "EXPORTFILE",   pdfFile,
             "PROJECTNAME",  ProjectName,
             "LANGUAGE",     Language);
-
-        // 2) ctx, no LANGUAGE (in case export rejects the language code).
-        if (!pdfOk)
-            pdfOk = TryCtx("PDF ctx no-LANG", "export",
-                "TYPE",        "PDFPROJECTSCHEME",
-                "EXPORTSCHEME", PdfScheme,
-                "EXPORTFILE",   pdfFile,
-                "PROJECTNAME",  ProjectName);
-
-        // 3) ctx, no PROJECTNAME (use active project, as the reference example).
-        if (!pdfOk)
-            pdfOk = TryCtx("PDF ctx no-PROJ", "export",
-                "TYPE",        "PDFPROJECTSCHEME",
-                "EXPORTSCHEME", PdfScheme,
-                "EXPORTFILE",   pdfFile);
-
-        // 4) command-string equivalent, in case the ctx path behaves differently.
-        if (!pdfOk)
-            pdfOk = Try("PDF cli full",
-                "export /TYPE:PDFPROJECTSCHEME" +
-                " /EXPORTFILE:\"" + pdfFile + "\"" +
-                " /EXPORTSCHEME:\"" + PdfScheme + "\"" +
-                " /PROJECTNAME:\"" + ProjectName + "\"");
 
         // Independent confirmation: did the file actually land on disk?
         _log.AppendLine("PDF file exists : " + File.Exists(pdfFile));
