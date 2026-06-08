@@ -65,7 +65,8 @@ public class ValidateApiEBuild
             if (project != null)
             {
                 object finder = New("Eplan.EplApi.DataModel.DMObjectsFinder", project);
-                object filter = New("Eplan.EplApi.DataModel.Filters.FunctionsFilter");
+                // Real full name on 2026 is Eplan.EplApi.DataModel.FunctionsFilter (NOT .Filters).
+                object filter = New("Eplan.EplApi.DataModel.FunctionsFilter");
                 object fnsObj = Call(finder, "GetFunctions", new object[] { filter });
                 System.Array fns = fnsObj as System.Array;
                 log.AppendLine("Q2 DMObjectsFinder.GetFunctions : OK -> " + (fns == null ? -1 : fns.Length) + " functions");

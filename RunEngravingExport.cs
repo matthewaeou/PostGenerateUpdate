@@ -4,12 +4,10 @@
 // Eplan.EplAddIn.EngravingData.dll. The add-in must be REGISTERED and LOADED first
 // (EPLAN > Utilities > API > Add-Ins... > Add... > pick the DLL).
 //
-// Run: select the project node in the Pages navigator, then
-//      Utilities > Scripts > Run...  ->  RunEngravingExport  ->  Run().
-//
-// If this fails with a locking error (NoLockingStepException), the script context can't
-// hand the action a writable project — trigger the action from the EPLAN GUI instead
-// (Utilities > API), and tell me; I'll add a ribbon/menu button to the add-in.
+// Run: select the project node in the Pages navigator, then either
+//   - click "Export Engraving" on the EPLANCA ribbon tab (calls the same action), or
+//   - Utilities > Scripts > Run...  ->  RunEngravingExport  ->  Run().
+// The ribbon button (added by the ProjectCheck add-in's OnInitGui) is the quickest path.
 
 public class RunEngravingExport
 {

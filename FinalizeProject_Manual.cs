@@ -1,29 +1,33 @@
 // FinalizeProject_Manual.cs
 //
-// FALLBACK / INSURANCE script. Only needed if the in-generation PDF export
-// (PostGenerationExports_eBuild.cs) still fails during eBuild generation
-// because the print/PDF engine isn't available in that context.
+// Manual "finalize" for the CURRENTLY SELECTED project: exports the summarized
+// parts list (xlsx) and a whole-project PDF into <project>.edb\DOC.
 //
-// This runs in the NORMAL interactive EPLAN context, where PDF export is
-// known to work (same as the menu PDF export dialog). Run it AFTER an eBuild
-// generation finishes:
-//   1. Single-click the just-generated project in the Pages navigator.
-//   2. Utilities > Scripts > Run...  -> pick this file -> Run().
+// Runs in the normal interactive EPLAN context — via Utilities > Scripts > Run, or
+// the "Finalize Project" button on the EPLANCA ribbon tab — where the PDF/print
+// engine is available. Handy as a one-click re-export after manual edits, and as a
+// fallback if the in-generation export (PostGenerationExports_eBuild.cs) ever fails.
 //
-// It re-uses the project's own DOC folder and the same schemes as the
-// unattended exports script, so output lands in the same place.
+// HOW TO RUN: single-click the project node in the Pages navigator first (the label
+// and export actions act on the selected project), then run the script / click the
+// ribbon button.
+//
+// NOTE: simple scripts cannot reference the DataModel / HEServices assemblies on this
+// EPLAN build (CS0234), so the project path is resolved via the 'selectionset' action
+// — NOT SelectionSet.GetCurrentProject (which also throws NoLockingStepException in a
+// script). See memory: eplan-simple-script-assembly-limits.
 
 using System;
 using System.IO;
 using System.Text;
 using Eplan.EplApi.ApplicationFramework;
-using Eplan.EplApi.HEServices;
-using Eplan.EplApi.DataModel;
 using Eplan.EplApi.Base;          // Decider, EnumDecisionType, EnumDecisionReturn
 
 public class FinalizeProjectManual
 {
-    private const string ScriptVersion   = "2026-06-05.10";
+    private const string ScriptVersion   = "2026-06-08.1";
+    // Scheme NAME (not the dialog label). EPLAN reports the PDF scheme's valid name
+    // as 'EPLAN_default_value' — the dialog just displays it as "Default".
     private const string PdfScheme       = "EPLAN_default_value";
     private const string PartsListScheme = "Summarized parts list";
     private const string Language        = "en_US";
@@ -31,40 +35,40 @@ public class FinalizeProjectManual
     [Start]
     public void Run()
     {
-        StringBuilder log = new StringBuilder();
         CommandLineInterpreter cli = new CommandLineInterpreter();
+        StringBuilder log = new StringBuilder();
+        log.AppendLine("=== FinalizeProject  " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ===");
+        log.AppendLine("Script version : " + ScriptVersion);
+        log.AppendLine("user           : " + Environment.UserName + " @ " + Environment.MachineName);
 
-        string projectPath;
+        // Resolve the selected project path via the selectionset action (no DataModel).
+        string projectPath = "";
         try
         {
-            // Resolve the currently selected/open project (interactive context).
-            SelectionSet sel = new SelectionSet();
-            Project project = sel.GetCurrentProject(true);
-            projectPath = project.ProjectLinkFilePath;   // full path to the .elk
+            ActionCallingContext ss = new ActionCallingContext();
+            ss.AddParameter("TYPE", "PROJECT");
+            cli.Execute("selectionset", ss);
+            ss.GetParameter("PROJECTNAME", ref projectPath);
+            if (string.IsNullOrEmpty(projectPath)) ss.GetParameter("PROJECT", ref projectPath);
         }
-        catch (Exception ex)
+        catch (Exception ex) { log.AppendLine("selectionset EXCEPTION : " + ex); projectPath = ""; }
+        log.AppendLine("project        : " + (string.IsNullOrEmpty(projectPath) ? "(none selected)" : projectPath));
+
+        if (string.IsNullOrEmpty(projectPath) || !projectPath.EndsWith(".elk"))
         {
-            new Decider().Decide(
-                EnumDecisionType.eOkDecision,
-                "Could not resolve the current project. Select the project node "
-                + "in the Pages navigator first.\n\n" + ex.Message,
-                "Finalize project", EnumDecisionReturn.eOK, EnumDecisionReturn.eOK);
+            WriteLog(log.ToString(), projectPath);
+            Tell("Could not resolve the current project.\n\nSingle-click the project node "
+                 + "in the Pages navigator first, then run again.");
             return;
         }
 
-        string docsPath    = Path.Combine(Path.ChangeExtension(projectPath, ".edb"), "DOC");
+        string docPath     = Path.Combine(Path.ChangeExtension(projectPath, ".edb"), "DOC");
         string projectBase = Path.GetFileNameWithoutExtension(projectPath);
-        string logPath     = Path.Combine(docsPath, "PostGenerationExports.log");
-        Directory.CreateDirectory(docsPath);
+        Directory.CreateDirectory(docPath);
+        string pdfFile   = Path.Combine(docPath, projectBase + ".pdf");
+        string partsFile = Path.Combine(docPath, "Parts_List.xlsx");
 
-        string pdfFile   = Path.Combine(docsPath, projectBase + ".pdf");
-        string partsFile = Path.Combine(docsPath, "Parts_List.xlsx");
-
-        log.AppendLine("=== Manual finalize " + DateTime.Now + " ===");
-        log.AppendLine("Script version : " + ScriptVersion);
-        log.AppendLine("Project : " + projectPath);
-
-        // Parts list (data-model; works in any context).
+        // Parts list (label action; data-model export, works in any context).
         log.AppendLine("PL label        : " + Exec(cli,
             "label /CONFIGSCHEME:\"" + PartsListScheme + "\" /EXPORTFILE:\"" +
             partsFile + "\" /LANGUAGE:" + Language +
@@ -78,22 +82,42 @@ public class FinalizeProjectManual
         ctx.AddParameter("PROJECTNAME",  projectPath);
         bool pdfOk;
         try { pdfOk = cli.Execute("export", ctx); }
-        catch (Exception ex) { pdfOk = false; log.AppendLine("PDF EXCEPTION   : " + ex.Message); }
+        catch (Exception ex) { pdfOk = false; log.AppendLine("PDF EXCEPTION   : " + ex); }
         log.AppendLine("PDF export      : " + pdfOk);
         log.AppendLine("PDF file exists : " + File.Exists(pdfFile));
 
-        try { File.AppendAllText(logPath, log.ToString() + Environment.NewLine); } catch { }
+        WriteLog(log.ToString(), projectPath);
 
         new Decider().Decide(
-            EnumDecisionType.eOkDecision,
-            log.ToString(),
-            "Finalize project result",
-            EnumDecisionReturn.eOK, EnumDecisionReturn.eOK);
+            EnumDecisionType.eOkDecision, log.ToString(),
+            "Finalize project result", EnumDecisionReturn.eOK, EnumDecisionReturn.eOK);
     }
 
     private static bool Exec(CommandLineInterpreter cli, string command)
     {
-        try { return cli.Execute(command); }
-        catch { return false; }
+        try { return cli.Execute(command); } catch { return false; }
+    }
+
+    // Write log to the project's DOC folder; fall back to %TEMP% if no project resolved.
+    private static void WriteLog(string text, string projectPath)
+    {
+        string dir;
+        try
+        {
+            dir = (!string.IsNullOrEmpty(projectPath) && projectPath.EndsWith(".elk"))
+                ? Path.Combine(Path.ChangeExtension(projectPath, ".edb"), "DOC")
+                : Path.Combine(Path.GetTempPath(), "EPLAN_Scripts");
+            Directory.CreateDirectory(dir);
+        }
+        catch { dir = Path.GetTempPath(); }
+        try { File.AppendAllText(Path.Combine(dir, "FinalizeProject.log"),
+                                 text + Environment.NewLine, new UTF8Encoding(true)); }
+        catch { }
+    }
+
+    private static void Tell(string text)
+    {
+        new Decider().Decide(EnumDecisionType.eOkDecision, text, "Finalize project",
+            EnumDecisionReturn.eOK, EnumDecisionReturn.eOK);
     }
 }

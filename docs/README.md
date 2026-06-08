@@ -18,9 +18,13 @@ code in the parent folder is ground truth.
 The ✅ items are distilled from the working scripts one level up
 ([../PostGenerationNumbering_eBuild.cs](../PostGenerationNumbering_eBuild.cs),
 [../PostGenerationExports_eBuild.cs](../PostGenerationExports_eBuild.cs),
-[../ExportEngravingData.cs](../ExportEngravingData.cs),
-[../PageNavi_ContextMenu_OpenFolders.cs](../PageNavi_ContextMenu_OpenFolders.cs), …) and
-the project memory note.
+[../PageNavi_ContextMenu_OpenFolders.cs](../PageNavi_ContextMenu_OpenFolders.cs), …), the
+compiled add-ins ([../addin/README.md](../addin/README.md)), and the project memory note.
+The DataModel work lives in the **add-ins**, not in simple scripts — the early
+`ExportEngravingData.cs` / `FinalizeProject_Manual.cs` simple-script attempts could not
+bind to the object model (CS0234); `ExportEngravingData.cs` is now superseded by the
+`EngravingDataExport` action and `FinalizeProject_Manual.cs` was reworked to use only
+actions.
 
 **External examples:** the best free library of runnable EPLAN scripts is
 [Suplanus/EplanScriptingProjectBySuplanus](https://github.com/Suplanus/EplanScriptingProjectBySuplanus)
@@ -35,10 +39,10 @@ Two harnesses in the repo root turn the 📘/⚠️ items into measured facts:
 - **[../ValidateApi.cs](../ValidateApi.cs)** — run interactively (`Utilities ▸ Scripts ▸
   Run…`, project selected). Read-only by default. Reflection-probes every uncertain API
   and runtime-probes project/DataModel/properties/settings/paths/actions, then writes
-  `…\DOCS\ValidateApi.log` and shows a PASS/FAIL/INFO summary.
+  `…\DOC\ValidateApi.log` and shows a PASS/FAIL/INFO summary.
 - **[../ValidateApi_eBuild.cs](../ValidateApi_eBuild.cs)** — attach as a Script-Typical
   and generate a project. Answers the big open question — *does the DataModel work during
-  eBuild generation?* — into `…\DOCS\ValidateApi_eBuild.log`.
+  eBuild generation?* — into `…\DOC\ValidateApi_eBuild.log`.
 
 Workflow: run them, read the logs, then promote the doc grades (📘→✅, or correct ⚠️) to
 match what this EPLAN version actually does.

@@ -636,6 +636,49 @@ text, action, bool, bool)` signature. Use whichever you like.
 goes to `AddMenuItem`. `DialogName`/`ContextMenuName` for *other* hosts must be
 discovered per dialog (📘 — use the Ctrl+\\ trick / extended action list, §17).
 
+### 11a. Ribbon buttons from a compiled add-in (`RibbonBar`)
+
+✅ **Confirmed working pattern** (EPLAN 2026, [addin/Eplan.EplAddIn.ProjectCheck.cs](../addin/Eplan.EplAddIn.ProjectCheck.cs)).
+A custom ribbon tab/button can only be added from a **compiled add-in** (`IEplAddIn`), not
+a simple script. The non-obvious part is *timing*: EPLAN restores its saved ribbon layout
+**after** `OnInitGui` runs, so anything you add directly in `OnInitGui` (or `OnRegister`)
+is wiped. The fix is `RibbonBar.AddDelayedAction`, which defers your callback until after
+the restore:
+
+```csharp
+public bool OnInitGui()
+{
+    new RibbonBar().AddDelayedAction(rb =>
+    {
+        RibbonTab tab = rb.AddTab("EPLANCA");          // create (or fetch) the tab
+        tab.IsSetAsVisible = true;
+        RibbonCommandGroup grp = tab.AddCommandGroup("Checks");
+        grp.AddCommand("Check Project", "ProjectCheck",   // button text, action command line
+                       "tooltip…", "description…");
+    });
+    return true;
+}
+```
+
+Key facts (reflected from `Eplan.EplApi.Guiu.dll`):
+- The 2nd `AddCommand` arg is an **action command line** (`strActionCommandLine`), not just
+  a name — so it can carry parameters. To launch a `[Start]` script from a button:
+  `grp.AddCommand("Run Numbering", "ExecuteScript /ScriptFile:\"C:\\…\\Script.cs\"", …)`.
+- Buttons can target actions registered by **any** loaded add-in (the EPLANCA tab mixes
+  `ProjectCheck` with `EngravingData`'s actions).
+- The tab persists across restarts once registered this way (load-on-start add-in).
+
+❌ **Approaches that did NOT work** (cost real time):
+- `AddTab` / `RegisterCommand` / `AddCommand` directly in `OnInitGui` → overwritten by the
+  ribbon restore (button silently absent).
+- `AddCommand` in `OnRegister` → ribbon not initialised yet; nothing appears.
+- `RegisterCommand(info, icon, tabName, groupName)` even inside `AddDelayedAction` → ran
+  without error but never produced a visible tab. The explicit
+  `AddTab → AddCommandGroup → AddCommand` chain is what works.
+
+> A rebuilt add-in DLL is held in memory until EPLAN fully **restarts**; if a restart
+> doesn't show the change, unload/reload the add-in in Utilities ▸ API ▸ Add-Ins.
+
 ---
 
 ## 12. Paths — `PathMap` and EPLAN variables
@@ -654,7 +697,7 @@ string folder = Eplan.EplApi.Base.PathMap.SubstitutePath("$(PROJECTPATH)");   //
   |---|---|
   | `$(PROJECTNAME)` | project name only — `[EES]_…_V01` (no path, no extension) |
   | `$(PROJECTPATH)` = `$(P)` | `…\Projects\EPLANCA\[EES]_…_V01.edb` |
-  | `$(DOC)` | `…\[EES]_…_V01.edb\DOC` — ⚠️ **`DOC`**, *not* the `DOCS` folder our scripts write |
+  | `$(DOC)` | `…\[EES]_…_V01.edb\DOC` — the project's document folder; **all our scripts write here** |
   | `$(IMG)` | `…\[EES]_…_V01.edb\Images` |
   | `$(MD_SCRIPTS)` | `C:\Users\Public\Eplan\Data\Scripts\Massiv` |
   | `$(MD_PARTS)` | `C:\Users\Public\Eplan\Data\Parts\Massiv` |
@@ -662,14 +705,15 @@ string folder = Eplan.EplApi.Base.PathMap.SubstitutePath("$(PROJECTPATH)");   //
   | `$(BIN)` | `C:\Program Files\EPLAN\Platform\2026.0.3\Bin` |
   | `$(EPLAN_VERSION)` | `2026.0.3` |
 
-- ⚠️ The project's **real document dir is `$(DOC)` = `.edb\DOC`**; our export/log scripts
-  instead create a custom `.edb\DOCS`. Both work — just don't confuse them.
+- ✅ The project's document dir is `$(DOC)` = `.edb\DOC` — the EPLAN-standard folder name.
+  Every export/log script writes here. (An earlier revision used a custom `.edb\DOCS`; that
+  has been standardised to `DOC` throughout.)
 
-✅ **Deriving the project's `DOCS` folder** (the house pattern for all output) doesn't
+✅ **Deriving the project's `DOC` folder** (the house pattern for all output) doesn't
 use PathMap at all — it transforms the `.elk` path to the `.edb` data folder:
 ```csharp
-string docsPath = Path.Combine(Path.ChangeExtension(projectPath, ".edb"), "DOCS");
-Directory.CreateDirectory(docsPath);
+string docPath = Path.Combine(Path.ChangeExtension(projectPath, ".edb"), "DOC");
+Directory.CreateDirectory(docPath);
 ```
 Used identically in every export/log script here.
 
@@ -703,20 +747,23 @@ Used identically in every export/log script here.
 
 ## 14. Reusable snippets
 
-**DOCS path + file logging skeleton** (eBuild‑safe, no dialogs):
+**DOC path + file logging skeleton** (eBuild‑safe, no dialogs):
 ```csharp
-string docsPath = Path.Combine(Path.ChangeExtension(ProjectName, ".edb"), "DOCS");
-Directory.CreateDirectory(docsPath);
-string logPath = Path.Combine(docsPath, "MyScript.log");
+string docPath = Path.Combine(Path.ChangeExtension(ProjectName, ".edb"), "DOC");
+Directory.CreateDirectory(docPath);
+string logPath = Path.Combine(docPath, "MyScript.log");
 var log = new StringBuilder();
-log.AppendLine("=== MyScript " + DateTime.Now + " ===");
-log.AppendLine("Script version : " + ScriptVersion);
+log.AppendLine("=== MyScript  " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ===");
+log.AppendLine("user    : " + Environment.UserName + " @ " + Environment.MachineName);
+log.AppendLine("project : " + ProjectName);
 // … do work, appending results …
-try { File.AppendAllText(logPath, log.ToString() + Environment.NewLine); } catch { }
+try { File.AppendAllText(logPath, log.ToString() + Environment.NewLine, new UTF8Encoding(true)); } catch { }
 ```
+This header format (`=== Name  timestamp ===` / `user : …` / `project : …`) + UTF-8 BOM is
+the house standard across every production script.
 
-**CSV field escaping** (newlines → literal `\n`, quotes doubled) —
-[ExportEngravingData.cs:139‑146](../ExportEngravingData.cs):
+**CSV field escaping** (newlines → literal `\n`, quotes doubled) — see the `Csv` helper in
+[addin/Eplan.EplAddIn.EngravingData.cs](../addin/Eplan.EplAddIn.EngravingData.cs):
 ```csharp
 private static string Field(string s)
 {
@@ -821,10 +868,12 @@ platform version. High‑quality reference, not guaranteed drop‑in.
 | [PostGenerationNumbering.cs](../PostGenerationNumbering.cs) | Interactive `[Start]`, `generate`/`renumber`, `Decider` summary, dual entry‑point pattern |
 | [PostGenerationNumbering_eBuild.cs](../PostGenerationNumbering_eBuild.cs) | eBuild `[Start](string ProjectName)`, `/PROJECTNAME`, file logging, version stamp |
 | [PostGenerationExports_eBuild.cs](../PostGenerationExports_eBuild.cs) | `Try`/`TryCtx` wrappers, `label` xlsx export, `export` PDF via `ActionCallingContext`, post‑hoc `File.Exists` check |
-| [FinalizeProject_Manual.cs](../FinalizeProject_Manual.cs) | ⚠️ **won't compile as a simple script** (uses `SelectionSet`/`DataModel`, §0). Pattern reference only until rebuilt via reflection/add‑in |
-| [ExportEngravingData.cs](../ExportEngravingData.cs) | ⚠️ **won't compile as a simple script** (uses `DMObjectsFinder`/`FunctionsFilter`/`SelectionSet`, §0). Logic is sound; needs reflection/add‑in rebuild |
-| [ValidateApi.cs](../ValidateApi.cs) | **Validation harness** (interactive, read‑only): reflection probes of uncertain APIs + runtime probes of project/DataModel/properties/settings/paths/action‑return‑values; writes `DOCS\ValidateApi.log` |
-| [ValidateApi_eBuild.cs](../ValidateApi_eBuild.cs) | **Validation probe** (Script‑Typical): does the DataModel work during eBuild generation? logs to `DOCS\ValidateApi_eBuild.log` |
+| [FinalizeProject_Manual.cs](../FinalizeProject_Manual.cs) | Interactive `[Start]`: resolves the project path via the `selectionset` action (no DataModel — so it compiles), then `label` xlsx + `export` PDF. Backs the "Finalize Project" ribbon button |
+| [ExportEngravingData.cs](../ExportEngravingData.cs) | ⛔ **DEPRECATED** — never compiled as a simple script (uses `DMObjectsFinder`/`SelectionSet`, §0); superseded by the `EngravingDataExport` add-in action |
+| [addin/Eplan.EplAddIn.EngravingData.cs](../addin/Eplan.EplAddIn.EngravingData.cs) | **Compiled add-in**: `IEplAddIn` + two `IEplAction` (engraving export/import), full DataModel read+write, `MultiLangString` round-trip, CSV helpers |
+| [addin/Eplan.EplAddIn.ProjectCheck.cs](../addin/Eplan.EplAddIn.ProjectCheck.cs) | **Compiled add-in**: `ProjectCheck` action (single-pass per-DT checks) **and** owner of the EPLANCA ribbon tab (`AddDelayedAction` + `AddTab`/`AddCommandGroup`/`AddCommand`) |
+| [ValidateApi.cs](../ValidateApi.cs) | **Validation harness** (interactive, read‑only): reflection probes of uncertain APIs + runtime probes of project/DataModel/properties/settings/paths/action‑return‑values; writes `DOC\ValidateApi.log` |
+| [ValidateApi_eBuild.cs](../ValidateApi_eBuild.cs) | **Validation probe** (Script‑Typical): does the DataModel work during eBuild generation? logs to `DOC\ValidateApi_eBuild.log` |
 
 ---
 

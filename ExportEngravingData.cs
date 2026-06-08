@@ -1,5 +1,14 @@
 // ExportEngravingData.cs
 //
+// ⛔ DEPRECATED — DO NOT USE. Kept only for reference.
+//    This simple-script version references the DataModel / HEServices assemblies,
+//    which a simple script CANNOT bind to on this EPLAN build (CS0234), so it never
+//    compiled or ran. Its logic now lives in the compiled add-in as the
+//    'EngravingDataExport' action — see addin\Eplan.EplAddIn.EngravingData.cs.
+//    Use the "Export Engraving" button on the EPLANCA ribbon tab, or run
+//    RunEngravingExport.cs. Safe to delete this file.
+//
+// ------------------------------------------------------------------------------
 // Exports field-item nameplate data for round-trip editing. Includes every
 // function that has a non-empty Engraving text property (FUNC_GRAVINGTEXT),
 // i.e. the items shown in the mechanical model.

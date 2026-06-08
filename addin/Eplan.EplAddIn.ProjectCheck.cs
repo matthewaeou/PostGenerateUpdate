@@ -1,8 +1,16 @@
 // Eplan.EplAddIn.ProjectCheck.cs
 //
 // Project validation add-in for EPLAN Electric P8.
-// Provides the 'ProjectCheck' action — run via RunProjectCheck.cs or
-// Utilities > API > Execute action.
+// Provides the 'ProjectCheck' action — run via RunProjectCheck.cs, the EPLANCA
+// ribbon tab, or Utilities > API > Execute action.
+//
+// RIBBON OWNER: this add-in also builds the shared "EPLANCA" ribbon tab in
+// OnInitGui (see ProjectCheckAddIn below). The tab groups every EPLANCA tool:
+//   Checks          -> ProjectCheck                 (this DLL)
+//   Engraving       -> EngravingDataExport/Import    (Eplan.EplAddIn.EngravingData.dll)
+//   Post-Generation -> PostGenerationNumbering.cs / FinalizeProject_Manual.cs (ExecuteScript)
+//   Diagnostics     -> ValidateApi.cs               (ExecuteScript)
+// The Engraving buttons require Eplan.EplAddIn.EngravingData.dll to also be loaded.
 //
 // Checks performed:
 //   1. UNNUMBERED    device tags containing '?' (not yet numbered by renumber)
@@ -28,6 +36,7 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Reflection;
 using System.Collections.Generic;
 using Eplan.EplApi.ApplicationFramework;
 using Eplan.EplApi.Base;
@@ -38,31 +47,98 @@ using Eplan.EplApi.HEServices;
 namespace Eplan.EplAddIn.ProjectCheck
 {
     // ------------------------------------------------------------------ add-in lifecycle
+    //
+    // This add-in owns the shared "EPLANCA" ribbon tab. Besides its own ProjectCheck
+    // action it adds buttons for the other EPLANCA tools:
+    //   - Engraving Export/Import  -> actions in Eplan.EplAddIn.EngravingData.dll
+    //                                 (that DLL must also be loaded for those buttons to work)
+    //   - Numbering / Finalize / Validate -> simple [Start] scripts launched via the
+    //                                 built-in ExecuteScript action
+    // Centralising every button here keeps a single tab definition and avoids two add-ins
+    // racing to create the same tab.
     public class ProjectCheckAddIn : IEplAddIn
     {
-        public bool OnRegister(ref bool bLoadOnStart) { bLoadOnStart = true; return true; }
+        // Buttons that launch a [Start] script file via the built-in ExecuteScript action.
+        // Paths are resolved at runtime relative to this DLL (…\EPLANCA\addin\bin -> …\EPLANCA).
+        private static string ScriptCmd(string fileName)
+        {
+            return "ExecuteScript /ScriptFile:\"" + Path.Combine(ScriptsDir(), fileName) + "\"";
+        }
+
+        // Locate the EPLANCA scripts folder: two levels up from the add-in DLL, with a
+        // hard-coded fallback to the standard deployment path.
+        private static string ScriptsDir()
+        {
+            try
+            {
+                string asmDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                string up2    = Path.GetFullPath(Path.Combine(asmDir, "..", ".."));
+                if (Directory.Exists(up2) &&
+                    File.Exists(Path.Combine(up2, "PostGenerationNumbering.cs")))
+                    return up2;
+            }
+            catch { }
+            return @"C:\Users\Public\EPLAN\Data\Scripts\EPLANCA";
+        }
+
+        // OnRegister: set load-on-start flag only — ribbon not yet available here.
+        public bool OnRegister(ref bool bLoadOnStart)
+        {
+            bLoadOnStart = true;
+            return true;
+        }
+
         public bool OnUnregister() { return true; }
-        public bool OnInit()      { return true; }
+        public bool OnInit()       { return true; }
+
+        // OnInitGui: ribbon is fully initialized here.
+        // AddDelayedAction fires AFTER EPLAN restores its saved ribbon config,
+        // so the EPLANCA tab won't be overwritten by the restore.
         public bool OnInitGui()
         {
             try
             {
-                var ribbon = new RibbonBar();
-                RibbonTab tab = ribbon.GetDefaultTab(RibbonTab.DefaultRibbonTabs.Tools);
-                if (tab != null)
+                new RibbonBar().AddDelayedAction(rb =>
                 {
-                    RibbonCommandGroup group = tab.AddCommandGroup("Project Checks");
-                    group.AddCommand(
-                        "Check Project",
-                        "ProjectCheck",
-                        "Check for common issues: missing part numbers, unnumbered devices, panel-only placements, etc.",
-                        "Run quality checks on the currently selected project");
-                }
+                    try
+                    {
+                        RibbonTab tab = rb.AddTab("EPLANCA");
+                        tab.IsSetAsVisible = true;
+
+                        RibbonCommandGroup checks = tab.AddCommandGroup("Checks");
+                        checks.AddCommand("Check Project", "ProjectCheck",
+                            "Check for common issues (missing part numbers, unnumbered devices, panel-only placements, …)",
+                            "Run quality checks on the current project");
+
+                        RibbonCommandGroup engraving = tab.AddCommandGroup("Engraving");
+                        engraving.AddCommand("Export Engraving", "EngravingDataExport",
+                            "Export field-item engraving text to <project>.edb\\DOC\\EngravingData.csv",
+                            "Export engraving / function text for editing");
+                        engraving.AddCommand("Import Engraving", "EngravingDataImport",
+                            "Read EngravingData.csv back and write engraving + function text into the project",
+                            "Import edited engraving / function text");
+
+                        RibbonCommandGroup postgen = tab.AddCommandGroup("Post-Generation");
+                        postgen.AddCommand("Run Numbering", ScriptCmd("PostGenerationNumbering.cs"),
+                            "Renumber devices and connections on the current project",
+                            "Manual post-generation device + connection numbering");
+                        postgen.AddCommand("Finalize Project", ScriptCmd("FinalizeProject_Manual.cs"),
+                            "Run the manual finalize steps (PDF / exports) on the current project",
+                            "Manual project finalize (PDF + exports)");
+
+                        RibbonCommandGroup diag = tab.AddCommandGroup("Diagnostics");
+                        diag.AddCommand("Validate API", ScriptCmd("ValidateApi.cs"),
+                            "Probe the scripting API / environment and write a diagnostic log",
+                            "Run the API validation probe");
+                    }
+                    catch { }
+                });
             }
             catch { }
             return true;
         }
-        public bool OnExit()      { return true; }
+
+        public bool OnExit() { return true; }
     }
 
     // ------------------------------------------------------------------ check action
