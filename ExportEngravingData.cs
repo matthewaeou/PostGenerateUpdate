@@ -4,7 +4,7 @@
 // function that has a non-empty Engraving text property (FUNC_GRAVINGTEXT),
 // i.e. the items shown in the mechanical model.
 //
-// Output: <project>.edb\DOCS\EngravingData.csv  (UTF-8, opens in Excel)
+// Output: <project>.edb\DOC\EngravingData.csv  (UTF-8, opens in Excel)
 //   Columns: Key, DT, Page, Location, PartNumber, FunctionText, EngravingText
 //   - Key is the full identifying device tag; the import matches on it, so do
 //     NOT edit the Key column.
@@ -45,7 +45,7 @@ public class ExportEngravingData
         }
 
         string elk      = project.ProjectLinkFilePath;
-        string docsPath  = Path.Combine(Path.ChangeExtension(elk, ".edb"), "DOCS");
+        string docsPath  = Path.Combine(Path.ChangeExtension(elk, ".edb"), "DOC");
         Directory.CreateDirectory(docsPath);
         string csvPath   = Path.Combine(docsPath, "EngravingData.csv");
 

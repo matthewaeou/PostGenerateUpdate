@@ -15,6 +15,7 @@
 //               Project Builder supplies ProjectName automatically.
 
 using System;
+using System.IO;
 using System.Text;
 using Eplan.EplApi.ApplicationFramework;
 using Eplan.EplApi.Base;
@@ -45,6 +46,20 @@ public class PostGenerationNumbering
     {
         CommandLineInterpreter cli = new CommandLineInterpreter();
         StringBuilder log = new StringBuilder();
+        log.AppendLine("=== PostGenerationNumbering  " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ===");
+        log.AppendLine("user    : " + Environment.UserName + " @ " + Environment.MachineName);
+
+        // Resolve current project path via selectionset (no DataModel needed).
+        string projectPath = "";
+        try
+        {
+            ActionCallingContext ctxSS = new ActionCallingContext();
+            ctxSS.AddParameter("TYPE", "PROJECT");
+            cli.Execute("selectionset", ctxSS);
+            ctxSS.GetParameter("PROJECTNAME", ref projectPath);
+        }
+        catch { projectPath = ""; }
+        log.AppendLine("project : " + (string.IsNullOrEmpty(projectPath) ? "(none selected)" : projectPath));
 
         try
         {
@@ -70,8 +85,11 @@ public class PostGenerationNumbering
         }
         catch (Exception ex)
         {
-            log.AppendLine("EXCEPTION: " + ex.Message);
+            log.AppendLine("EXCEPTION: " + ex);
         }
+
+        // Write log to project's DOC folder; fall back to %TEMP% if no project resolved.
+        WriteLog(log.ToString(), projectPath);
 
         // Show a summary so a silent no-op is never invisible again.
         new Decider().Decide(
@@ -80,5 +98,21 @@ public class PostGenerationNumbering
             "Post-generation numbering result",
             EnumDecisionReturn.eOK,
             EnumDecisionReturn.eOK);
+    }
+
+    private static void WriteLog(string text, string projectPath)
+    {
+        string dir;
+        try
+        {
+            dir = (!string.IsNullOrEmpty(projectPath) && projectPath.EndsWith(".elk"))
+                ? Path.Combine(Path.ChangeExtension(projectPath, ".edb"), "DOC")
+                : Path.Combine(Path.GetTempPath(), "EPLAN_Scripts");
+            Directory.CreateDirectory(dir);
+        }
+        catch { dir = Path.GetTempPath(); }
+        try { File.AppendAllText(Path.Combine(dir, "PostGenerationNumbering.log"),
+                                 text + Environment.NewLine, new UTF8Encoding(true)); }
+        catch { }
     }
 }

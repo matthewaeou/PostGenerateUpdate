@@ -1,4 +1,4 @@
-﻿//#################################################################################################################################################
+//#################################################################################################################################################
 // ESS - PageNavi_ContextMenu_OpenFolders
 //#################################################################################################################################################
 // Erweiterung des Kontextmenüs im Seitennavigator zum schnellen Öffnen der Verzeichnisse $(P), $(DOC) und $(IMG)
@@ -7,6 +7,7 @@
 //#################################################################################################################################################
 
 using System.IO;
+using System.Text;
 using System.Windows.Forms;
 using Eplan.EplApi.ApplicationFramework;
 using Eplan.EplApi.Gui;
@@ -23,23 +24,64 @@ public class PageNavi_ContextMenu_OpenFolders
     [DeclareAction("OpenFolder")]
     public void XOpenFolder(string FolderName)
     {
-        if (FolderName != string.Empty)
+        if (string.IsNullOrEmpty(FolderName)) return;
+
+        string resolvedPath = FolderName;
+        try
         {
             if (FolderName.StartsWith("$("))
-            {
-                FolderName = Eplan.EplApi.Base.PathMap.SubstitutePath(FolderName);
-            }
+                resolvedPath = Eplan.EplApi.Base.PathMap.SubstitutePath(FolderName);
 
-            DirectoryInfo oDI = new DirectoryInfo(FolderName);
+            DirectoryInfo oDI = new DirectoryInfo(resolvedPath);
             if (oDI.Exists)
             {
-                //Exportfile öffnen
                 System.Diagnostics.ProcessStartInfo proc = new System.Diagnostics.ProcessStartInfo();
-                proc.FileName = "explorer.exe";
-                proc.Arguments = FolderName;
+                proc.FileName  = "explorer.exe";
+                proc.Arguments = resolvedPath;
                 System.Diagnostics.Process.Start(proc);
+                AppendLog("opened : " + resolvedPath);
+            }
+            else
+            {
+                AppendLog("not found : " + resolvedPath);
+                MessageBox.Show(
+                    "Folder not found:\n" + resolvedPath,
+                    "Open folder", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
+        catch (System.Exception ex)
+        {
+            AppendLog("EXCEPTION (" + FolderName + "): " + ex);
+            MessageBox.Show(
+                "Could not open folder:\n" + resolvedPath + "\n\n" + ex.Message,
+                "Open folder", MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+
+    // Append a timestamped line to PageNavi.log in the project's DOC folder.
+    // Falls back to %TEMP%\EPLAN_Scripts if no project is open / DOC unresolvable.
+    private static void AppendLog(string message)
+    {
+        try
+        {
+            string dir;
+            try
+            {
+                string doc = Eplan.EplApi.Base.PathMap.SubstitutePath("$(DOC)");
+                dir = (!string.IsNullOrEmpty(doc) && Directory.Exists(doc))
+                    ? doc
+                    : System.IO.Path.Combine(System.IO.Path.GetTempPath(), "EPLAN_Scripts");
+            }
+            catch { dir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "EPLAN_Scripts"); }
+
+            Directory.CreateDirectory(dir);
+            string line = System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss")
+                          + " [OpenFolder] " + message;
+            File.AppendAllText(System.IO.Path.Combine(dir, "PageNavi.log"),
+                               line + System.Environment.NewLine,
+                               new UTF8Encoding(true));
+        }
+        catch { }
     }
 
     [DeclareMenu()]
@@ -80,7 +122,7 @@ public class PageNavi_ContextMenu_OpenFolders
 
         #region expan context menues
         //expand context-menu in page-navigator (tree-view)
-        ContextMenuLocation oCtxLoc = new ContextMenuLocation();     
+        ContextMenuLocation oCtxLoc = new ContextMenuLocation();
         oCtxLoc.DialogName = "PmPageObjectTreeDialog";
         oCtxLoc.ContextMenuName = "1007";
 
@@ -90,5 +132,5 @@ public class PageNavi_ContextMenu_OpenFolders
         oCTXMnu.AddMenuItem(oCtxLoc, _sGui_MenuText3, "OpenFolder /FolderName:$(IMG)", false, false);
         #endregion
     }
-   
+
 }

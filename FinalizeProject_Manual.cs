@@ -10,7 +10,7 @@
 //   1. Single-click the just-generated project in the Pages navigator.
 //   2. Utilities > Scripts > Run...  -> pick this file -> Run().
 //
-// It re-uses the project's own DOCS folder and the same schemes as the
+// It re-uses the project's own DOC folder and the same schemes as the
 // unattended exports script, so output lands in the same place.
 
 using System;
@@ -52,7 +52,7 @@ public class FinalizeProjectManual
             return;
         }
 
-        string docsPath    = Path.Combine(Path.ChangeExtension(projectPath, ".edb"), "DOCS");
+        string docsPath    = Path.Combine(Path.ChangeExtension(projectPath, ".edb"), "DOC");
         string projectBase = Path.GetFileNameWithoutExtension(projectPath);
         string logPath     = Path.Combine(docsPath, "PostGenerationExports.log");
         Directory.CreateDirectory(docsPath);

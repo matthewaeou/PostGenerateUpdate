@@ -2,7 +2,7 @@
 //
 // DEPLOYMENT copy for eBuild Script-Typicals. Runs unattended after the
 // Project Builder finishes generation. No dialogs: results are appended to a
-// log file in the project's DOCS folder.
+// log file in the project's DOC folder.
 //
 // Setup:
 //   Attach this under Script-Typicals in the Designer. ProjectName is supplied
@@ -16,22 +16,23 @@ using Eplan.EplApi.ApplicationFramework;
 
 public class PostGenerationNumbering
 {
-    private const string ScriptVersion    = "2026-06-05.7";
+    private const string ScriptVersion    = "2026-06-08.1";   // bump on every edit (cached compile)
     private const string DeviceScheme     = "ECLIPSE ROW_IDENTIFIER";
     private const string ConnectionScheme = "Eclipse NFPA Standard without PLC address";
 
     [Start]
     public void RunFromEBuild(string ProjectName)
     {
-        string docsPath = Path.Combine(Path.ChangeExtension(ProjectName, ".edb"), "DOCS");
-        Directory.CreateDirectory(docsPath);
-        string logPath = Path.Combine(docsPath, "PostGenerationNumbering.log");
+        string docPath = Path.Combine(Path.ChangeExtension(ProjectName, ".edb"), "DOC");
+        Directory.CreateDirectory(docPath);
+        string logPath = Path.Combine(docPath, "PostGenerationNumbering.log");
 
         CommandLineInterpreter cli = new CommandLineInterpreter();
         StringBuilder log = new StringBuilder();
-        log.AppendLine("=== Post-generation numbering " + DateTime.Now + " ===");
+        log.AppendLine("=== PostGenerationNumbering  " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ===");
         log.AppendLine("Script version : " + ScriptVersion);
-        log.AppendLine("Project: " + ProjectName);
+        log.AppendLine("user           : " + Environment.UserName + " @ " + Environment.MachineName);
+        log.AppendLine("project        : " + ProjectName);
 
         try
         {
@@ -54,9 +55,9 @@ public class PostGenerationNumbering
         }
         catch (Exception ex)
         {
-            log.AppendLine("EXCEPTION: " + ex.Message);
+            log.AppendLine("EXCEPTION: " + ex);
         }
 
-        try { File.AppendAllText(logPath, log.ToString() + Environment.NewLine); } catch { }
+        try { File.AppendAllText(logPath, log.ToString() + Environment.NewLine, new UTF8Encoding(true)); } catch { }
     }
 }

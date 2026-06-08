@@ -1,7 +1,7 @@
 // PostGenerationExports_eBuild.cs
 //
 // Exports the summarized parts list and a project PDF to the project's
-// DOCS folder after eBuild generation. Log is written to the same folder.
+// DOC folder after eBuild generation. Log is written to the same folder.
 //
 // PDF export uses the documented EPLAN 'export' action with
 // TYPE=PDFPROJECTSCHEME, invoked via ActionCallingContext (the canonical,
@@ -15,7 +15,7 @@ using Eplan.EplApi.ApplicationFramework;
 
 public class PostGenerationExports
 {
-    private const string ScriptVersion   = "2026-06-05.11";
+    private const string ScriptVersion   = "2026-06-08.1";   // bump on every edit (cached compile)
     // Scheme NAME (not the dialog label). EPLAN reported the valid name as
     // 'EPLAN_default_value' — the PDF dialog just displays it as "Default".
     private const string PdfScheme       = "EPLAN_default_value";
@@ -36,7 +36,7 @@ public class PostGenerationExports
         }
         catch (Exception ex)
         {
-            _log.AppendLine(label.PadRight(30) + ": EXCEPTION " + ex.Message);
+            _log.AppendLine(label.PadRight(30) + ": EXCEPTION " + ex);
             return false;
         }
     }
@@ -55,7 +55,7 @@ public class PostGenerationExports
         }
         catch (Exception ex)
         {
-            _log.AppendLine(label.PadRight(30) + ": EXCEPTION " + ex.Message);
+            _log.AppendLine(label.PadRight(30) + ": EXCEPTION " + ex);
             return false;
         }
     }
@@ -63,19 +63,20 @@ public class PostGenerationExports
     [Start]
     public void RunFromEBuild(string ProjectName)
     {
-        string docsPath    = Path.Combine(Path.ChangeExtension(ProjectName, ".edb"), "DOCS");
+        string docPath     = Path.Combine(Path.ChangeExtension(ProjectName, ".edb"), "DOC");
         string projectBase = Path.GetFileNameWithoutExtension(ProjectName);
-        string logPath     = Path.Combine(docsPath, "PostGenerationExports.log");
-        Directory.CreateDirectory(docsPath);
+        string logPath     = Path.Combine(docPath, "PostGenerationExports.log");
+        Directory.CreateDirectory(docPath);
 
         _cli = new CommandLineInterpreter();
         _log = new StringBuilder();
-        _log.AppendLine("=== Post-generation exports " + DateTime.Now + " ===");
+        _log.AppendLine("=== PostGenerationExports  " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + " ===");
         _log.AppendLine("Script version : " + ScriptVersion);
-        _log.AppendLine("Project : " + ProjectName);
+        _log.AppendLine("user           : " + Environment.UserName + " @ " + Environment.MachineName);
+        _log.AppendLine("project        : " + ProjectName);
 
-        string pdfFile   = Path.Combine(docsPath, projectBase + ".pdf");
-        string partsFile = Path.Combine(docsPath, "Parts_List.xlsx");
+        string pdfFile   = Path.Combine(docPath, projectBase + ".pdf");
+        string partsFile = Path.Combine(docPath, "Parts_List.xlsx");
 
         // ---- Parts list (label action + /LANGUAGE, confirmed working) ----
         Try("PL label",
@@ -97,6 +98,6 @@ public class PostGenerationExports
         _log.AppendLine("PDF file exists : " + File.Exists(pdfFile));
         _log.AppendLine("PDF path        : " + pdfFile);
 
-        try { File.AppendAllText(logPath, _log.ToString() + Environment.NewLine); } catch { }
+        try { File.AppendAllText(logPath, _log.ToString() + Environment.NewLine, new UTF8Encoding(true)); } catch { }
     }
 }
