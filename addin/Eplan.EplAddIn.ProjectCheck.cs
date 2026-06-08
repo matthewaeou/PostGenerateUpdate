@@ -32,6 +32,7 @@ using System.Collections.Generic;
 using Eplan.EplApi.ApplicationFramework;
 using Eplan.EplApi.Base;
 using Eplan.EplApi.DataModel;
+using Eplan.EplApi.Gui;
 using Eplan.EplApi.HEServices;
 
 namespace Eplan.EplAddIn.ProjectCheck
@@ -42,7 +43,25 @@ namespace Eplan.EplAddIn.ProjectCheck
         public bool OnRegister(ref bool bLoadOnStart) { bLoadOnStart = true; return true; }
         public bool OnUnregister() { return true; }
         public bool OnInit()      { return true; }
-        public bool OnInitGui()   { return true; }
+        public bool OnInitGui()
+        {
+            try
+            {
+                var ribbon = new RibbonBar();
+                RibbonTab tab = ribbon.GetDefaultTab(RibbonTab.DefaultRibbonTabs.Tools);
+                if (tab != null)
+                {
+                    RibbonCommandGroup group = tab.AddCommandGroup("Project Checks");
+                    group.AddCommand(
+                        "Check Project",
+                        "ProjectCheck",
+                        "Check for common issues: missing part numbers, unnumbered devices, panel-only placements, etc.",
+                        "Run quality checks on the currently selected project");
+                }
+            }
+            catch { }
+            return true;
+        }
         public bool OnExit()      { return true; }
     }
 
