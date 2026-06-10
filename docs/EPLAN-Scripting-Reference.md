@@ -38,6 +38,21 @@ EPLAN build 25625 the usable set is:
 > `System.Windows.Forms`, `Eplan.EplApi.Base`, `Eplan.EplApi.ApplicationFramework`,
 > `Eplan.EplApi.Gui`, `Eplan.EplApi.Scripting`
 
+**The allowlist is wider than we first measured.** The shipped **EPLAN Consulting
+Macro Utility** script (a 4 700‑line production `.cs` registered as a script add‑on,
+local copy in `…\Downloads\…\EplanConsulting_MacroUtility_V2.0.1\BIN\`) compiles with all
+of these as a *script* on platform 2022/2023:
+`Eplan.EplApi.MasterData` (**parts‑database object model — scripts CAN use it!**),
+`System.Linq`, `System.Xml.Linq`, `System.Threading`, `System.Threading.Tasks`,
+`System.Collections.Specialized`, `System.Diagnostics`. It does **not** touch
+`DataModel`/`HEServices` — consistent with our CS0234 finding.
+
+✅ **`Eplan.EplApi.MasterData` CONFIRMED on this build (2026‑06‑09):**
+[Probe_MasterData.cs](../Probe_MasterData.cs) compiled via `Scripts ▸ Run…`, opened the
+parts database, and read **542 parts** (`MDPartsManagement().OpenDatabase()` →
+`GetParts(MDObjectFilter)` → `MDPart.PartNr`). The remaining `System.*` additions above
+stay 📘 (not individually exercised here).
+
 **You CANNOT reference `Eplan.EplApi.DataModel`, `Eplan.EplApi.DataModel.Filters`, or
 `Eplan.EplApi.HEServices` in a simple script.** A `using` for any of them fails to
 compile with `CS0234 "the type or namespace name 'DataModel' does not exist in the
@@ -67,6 +82,12 @@ Consequences:
 `GetProjectProperty` (`id`/`index` → `value`), plus `label`/`export`/`renumber` (§4–§5).
 This is exactly why the Suplanus standalone scripts lean on actions. The other two routes
 to the object model (reflection; a compiled add‑in) are in §6.
+
+📘 **Scripts can also WRITE properties via actions** — `XEsSetPropertyAction` (selected
+placed objects) and `XEsSetPagePropertyAction` (page properties), and **read** arbitrary
+object data by exporting through the `label` / External‑Editing engines to a temp file.
+Both patterns are production‑proven in the Macro Utility (§5a, §6a) — the "scripts are
+read‑only" assumption is wrong.
 
 ---
 
@@ -104,6 +125,13 @@ Notes:
 - ⚠️ EPLAN caches the compiled script. **After every edit you must reload it** (re‑run
   from `Scripts ▸ Run…`, or in eBuild re‑select the file in the Designer). This bites
   constantly — see the version‑stamp discipline in §13.
+- ✅ **UI paths on EPLAN 2026** (this install): everything lives under
+  **File ▸ Extras ▸ Interfaces** — *Scripts ▸ Run* (execute once), *Scripts ▸ Load*
+  (register persistently; loaded scripts auto‑re‑register on every program start —
+  required for `[DeclareMenu]`/`[DeclareAction]`/`[DeclareEventHandler]` scripts),
+  *Scripts ▸ Unload*, *Add‑ons ▸ Manage* (install.xml script add‑ons, §18a), *API ▸
+  Manage* (compiled add‑in DLLs). Older "Utilities ▸ Scripts ▸ …" phrasing in this doc
+  maps to these.
 - 📘 Reference additional assemblies with a header comment line when a type lives
   outside the default set, e.g. `//#reference System.Windows.Forms.dll`. The PageNavi
   script uses `System.Windows.Forms` and `System.IO` directly, so the common ones are
@@ -173,6 +201,18 @@ public void Function() { … }     // fires as a project starts to close
 thing you want to hook — the diagnostics dialog shows the internal action name to wrap
 in `onActionStart.String.…`. (Source: Suplanus attributes page.)
 
+📘 **Real event names from the shipped Macro Utility script** (production code, so
+trustworthy spellings) — note that *bare* event names exist alongside the
+`onActionStart/End` wrappers:
+```csharp
+[DeclareEventHandler("NotifyPageOpened")]                          // a page was opened
+[DeclareEventHandler("Ged.PageClosed")]                            // a GED page closed
+[DeclareEventHandler("onActionEnd.String.XGedOpenSchemePage")]     // after open-page action
+[DeclareEventHandler("onActionEnd.String.XGedOpenPageInFrame")]
+```
+It uses these to cache the last selected page into a custom setting (§15) — a working
+example of event‑driven state in a script.
+
 ### `[DeclareRegister]` / `[DeclareUnregister]` 📘 (Suplanus — verbatim)
 Run once when the script add‑in is loaded / unloaded — use for setup that should persist
 (e.g. enabling a setting, registering a ribbon). Both are `public void` no‑arg:
@@ -192,6 +232,7 @@ Run once when the script add‑in is loaded / unloaded — use for setup that sh
 | `Eplan.EplApi.DataModel` | `Project`, `Page`, `Function`, `Connection`, `PropertyValue`, `AnyPropertyId`, `Properties.*`, `DMObjectsFinder` | ⚠️ **NOT in simple scripts** — add‑in/reflection only (§0, §6) |
 | `Eplan.EplApi.DataModel.Filters` | `FunctionsFilter`, `PagesFilter`, … | ⚠️ **NOT in simple scripts** (§0, §6) |
 | `Eplan.EplApi.HEServices` | `SelectionSet` (and other high‑level services) | ⚠️ **NOT in simple scripts** (§0, §6) |
+| `Eplan.EplApi.MasterData` | `MDPartsManagement`, `MDPartsDatabase`, `MDPart` — the parts database | ✅ **allowed in scripts** — confirmed on this build via [Probe_MasterData.cs](../Probe_MasterData.cs) (§0, §5a) |
 | `Eplan.EplApi.Gui` | `ContextMenu`, `ContextMenuLocation`, ribbon menus | ✅ |
 | `Eplan.EplApi.Scripting` | the entry‑point attributes (auto‑injected) | ✅ |
 
@@ -257,6 +298,21 @@ new CommandLineInterpreter().Execute("GetProjectProperty", acc);
 acc.GetParameter("value", ref value);     // ← out value comes back here
 ```
 - ✅ `GetParameter(string key, ref string var)` retrieves an output parameter.
+- ✅ **Enumerate outputs without knowing their names** (reflected from
+  `Eplan.EplApi.Base.Context`, the base of `ActionCallingContext`, 2026.0.3): after
+  `Execute`, call `string[] GetParameters()` for **all** parameter names in the context,
+  then `GetParameter(name, ref v)` per name. Also `int GetParameterCount()`,
+  `string[] GetStrings()`, and `GetContextParameter()` →
+  `ContextParameterBlock.GetList()` (a `List<object>` of values). This is how to
+  discover an action's output slot when it publishes no parameter metadata (§17) — used
+  by the v4 menu probe to crack `XEsGetPropertyAction` (its output turned out to be
+  `propertyvalue`).
+- ⚠️ **Parameter names round‑trip LOWERCASED.** The v4 dump showed inputs added as
+  `PropertyId`/`PropertyIndex` come back from `GetParameters()` as `propertyid`/
+  `propertyindex`, and outputs are lowercase too. Since `GetParameter(name, ref v)` is
+  case‑sensitive, **read outputs back by their lowercase name** (`"propertyvalue"`, not
+  `"PropertyValue"`). A wrong‑case key silently returns empty — the trap that made v2
+  look like the read had failed.
 - ⚠️ **`GetProjectProperty` is NOT a built‑in action** — it's a *custom* `[DeclareAction]`
   from Suplanus's own script; without that script loaded it returns `false` (confirmed on
   2026.0.3 — every id returned `ok=False`). To read a project property without the object
@@ -318,6 +374,13 @@ private bool TryCtx(string label, string action, params string[] kv)
 | `label` | Export parts list / labels (xlsx, csv, xml…) | `/CONFIGSCHEME`, `/EXPORTFILE`, `/LANGUAGE`, `/PROJECTNAME` | ✅ |
 | `export` | Export PDF / graphics / DXF / DWG | `TYPE`, `EXPORTSCHEME`, `EXPORTFILE`, `PROJECTNAME`, `LANGUAGE` | ✅ (PDF) |
 | `XPrint` | Legacy print/PDF | — | ⚠️ prefer `export` |
+| `XEsSetPropertyAction` | **Write a property on the selected object(s)** | `/PropertyId`, `/PropertyIndex`, `/PropertyValue` | ✅ **writes confirmed (25625) from a context‑menu action** (20011 + 20025); ⚠️ silent no‑op (`True`) from `Scripts ▸ Run` — §5a |
+| `XEsSetPagePropertyAction` | **Write a page property** | `/PropertyId`, `/PropertyIndex`, `/PropertyValue` | ✅ exists (25625); write unverified — §5a |
+| `XEsGetPropertyAction` | **Read a property of the selected object(s)** | in: `PropertyId`, `PropertyIndex`; out: `propertyvalue` (lowercase, MLS‑serialized) | ✅ **read confirmed (25625) from a context‑menu action** — §5a |
+| `XMExportFunctionAction` | External‑Editing export (read object data to a file) | `ConfigScheme`, `CompleteProject`, `Destination`, `ExecutionMode` | ✅ exists (25625) |
+| `partslist` | Parts‑list import/processing | (ctx params) | ✅ exists (25625) |
+| `SystemErrDialog` | Show the EPLAN system‑messages dialog | — | ✅ exists (25625); interactive only |
+| `XSettingsImport` | Import a settings XML | `Project`, `XmlFile` (§15) | ✅ exists (25625) |
 
 ### `generate` ✅
 ```csharp
@@ -401,6 +464,147 @@ _log.AppendLine("PDF file exists : " + File.Exists(pdfFile));
 
 ---
 
+## 5a. Property write & read from a SCRIPT — the Macro Utility patterns
+
+> Source: the shipped **EPLAN Consulting Macro Utility V2.0** script (§18a) — production
+> code that runs as a plain script add‑on on platform 2022/2023. These patterns are the
+> answer to "how do I touch object data without DataModel?".
+
+> ✅ **VERDICT (probes v1–v4 on build 25625, 2026‑06‑09/10):** from a context‑menu action
+> on the selected object, scripts have **both a property WRITE and a property READ** path —
+> no add‑in. Confirmed call shapes:
+> ```csharp
+> // WRITE (selection in the GED; invoke from a [DeclareAction] behind a context menu):
+> cli.Execute("XEsSetPropertyAction /PropertyId:20025 /PropertyIndex:0 /PropertyValue:\"text\"");
+>
+> // READ the same property back:
+> ActionCallingContext acc = new ActionCallingContext();
+> acc.AddParameter("PropertyId", "20025");
+> acc.AddParameter("PropertyIndex", "0");
+> cli.Execute("XEsGetPropertyAction", acc);
+> string raw = "";
+> acc.GetParameter("propertyvalue", ref raw);   // ⚠ LOWERCASE name — see below
+> // raw == "??_??@text;"  (MultiLangString serialization, §7) — strip "??_??@"…";" for the
+> // all-language value, or decode per language.
+> ```
+> ⚠️ **The action lowercases every parameter name.** v4's `GetParameters()` dump showed the
+> inputs come back as `propertyid`/`propertyindex` and the **output is `propertyvalue`** —
+> all lowercase. `GetParameter` is case‑sensitive, so `GetParameter("PropertyValue", …)`
+> (what v2 guessed) returns empty; `GetParameter("propertyvalue", …)` works. The read also
+> returns `uxdetailsex` and `_cmdline` housekeeping params.
+>
+> ⚠️ **but the write works ONLY from a context‑menu invocation on the selected object.**
+> - ✅ [Probe_XEsSetProperty_Menu.cs](../Probe_XEsSetProperty_Menu.cs) (v3): a
+>   `[DeclareMenu]` entry in the **GED context menu** (`Editor`/`Ged`) firing a
+>   `[DeclareAction]` wrote **function text (20011)** and **engraving text (20025)** of
+>   the right‑clicked function — both landed, verified through `EngravingDataExport` →
+>   CSV (`marker found in CSV : True`; the function's row shows both markers).
+> - ⚠️ **The SAME call from `Scripts ▸ Run…` returns `True` without writing** (v2,
+>   CSV‑verified no‑op). `Execute()` returning `True` is dispatch‑success, not
+>   write‑success — the GED selection evidently isn't visible to the action when
+>   launched through the Run dialog. **Ship property‑writing tools as context‑menu
+>   actions** (as the Macro Utility does). Whether a ribbon‑button launch preserves
+>   the selection is untested.
+> - ✅ Existence map (`ActionManager.FindAction`): `XEsSetPropertyAction`,
+>   `XEsSetPagePropertyAction`, read twin `XEsGetPropertyAction`,
+>   `XMExportFunctionAction`, `InsertModelViewAction`, `partslist`, `SystemErrDialog`,
+>   `XSettingsImport` all EXIST; `GetProjectProperty` MISSING (custom Suplanus action).
+> - ✅ The read twin `XEsGetPropertyAction` **works** (v4, 2026‑06‑10): output slot
+>   `propertyvalue` (lowercase), value in MultiLangString serialization. Found by
+>   enumerating the context with `Context.GetParameters()` rather than guessing — see the
+>   call shape and the case‑sensitivity warning above.
+
+### Writing properties of the current selection — `XEsSetPropertyAction`
+```csharp
+CommandLineInterpreter cli = new CommandLineInterpreter();
+string q = "\"";
+// macro box selected in the GED → set macro name (P23001), variant (P23008), version (P23002):
+cli.Execute("XEsSetPropertyAction /PropertyId:23001 /PropertyIndex:0 /PropertyValue:" + q + macroName + q);
+cli.Execute("XEsSetPropertyAction /PropertyId:23008 /PropertyIndex:0 /PropertyValue:" + variant);
+cli.Execute("XEsSetPropertyAction /PropertyId:23002 /PropertyIndex:0 /PropertyValue:" + q + version + q);
+
+// page properties (page selected / active) — page macro name P11008 is INDEXED (macro index 1…100):
+cli.Execute("XEsSetPagePropertyAction /PropertyId:11008 /PropertyIndex:1 /PropertyValue:" + q + macroName + q);
+```
+- 📘 Operates on the **current selection** in the editor / navigator — so it's an
+  *interactive* tool (the unattended eBuild context has no selection).
+- 📘 Multilanguage values are passed in EPLAN's serialized form
+  (`en_US@text;de_DE@text;` — same syntax as `MultiLangString` serialization, §7/§10).
+- 📘 Property IDs the Macro Utility writes, useful as a starter map (macro authoring):
+
+  | ID | Meaning (object) |
+  |---|---|
+  | 23001 | Macro name (macro box) |
+  | 23002 | Macro version (macro box) |
+  | 23004 | Macro description (macro box) |
+  | 23008 | Macro variant (macro box) |
+  | 11008 | Page: macro name (indexed, 1‑based macro index) |
+  | 11014 | Page: macro description (indexed) |
+  | 11911 | Page: macro version |
+  | 23500 / 23501 / 23502 | Drill‑pattern (NC) box: name / description / subfolder |
+  | 36503 / 36500 | Installation space: name / model‑view description |
+
+### Reading object data — export through an engine, parse the file
+The Macro Utility never reads properties directly (it can't — no DataModel). It exports
+them via a **helper labeling scheme** to `$(TMP)` and reads the file back:
+```csharp
+ActionCallingContext ctx = new ActionCallingContext();
+ctx.AddParameter("CONFIGSCHEME",   "[EPLAN] MacroUtilityhelper Page"); // helper scheme
+ctx.AddParameter("DESTINATIONFILE", @"$(TMP)\helper_" + lang + ".txt"); // ⚠ DESTINATIONFILE here, not EXPORTFILE
+ctx.AddParameter("LANGUAGE",       lang);          // one language per pass
+ctx.AddParameter("USESELECTION",   "1");           // selected object(s) only
+ctx.AddParameter("SHOWOUTPUT",     "0");
+ctx.AddParameter("RECREPEAT",      "1");
+ctx.AddParameter("TASKREPEAT",     "1");
+new CommandLineInterpreter().Execute("label", ctx);
+string value = File.ReadAllText(PathMap.SubstitutePath(@"$(TMP)") + @"\helper_" + lang + ".txt");
+```
+- 📘 The labeling **scheme defines what gets exported** (any property you can put on a
+  label) — ship the scheme XML with your tool and import it at install time.
+- 📘 For data the labeling engine can't see, use **External Editing**: the utility reads
+  the installation‑space name via `XMExportFunctionAction`
+  (`ConfigScheme`/`CompleteProject:0`/`Destination`/`ExecutionMode:0`) with a `PXex.…`
+  scheme — its own comment says the name "cannot be read directly → detour via external
+  editing".
+- ⚠️ Note `label` here uses **`DESTINATIONFILE`**, while our working exports use
+  **`EXPORTFILE`** (§5). Both appear valid; if one silently no‑ops, try the other.
+
+### Parts database — direct object model (`Eplan.EplApi.MasterData`) ✅
+Scripts may reference `MasterData` (§0 — **confirmed on this build 2026‑06‑09** by
+[Probe_MasterData.cs](../Probe_MasterData.cs): compiled in the script host, opened the
+DB, read 542 parts). The pattern (utility + our probe):
+```csharp
+using (MDPartsDatabase db = new MDPartsManagement().OpenDatabase())   // user's parts DB
+{
+    MDObjectFilter filter = new MDObjectFilter();
+    MDAnyPropertyId pid = new MDAnyPropertyId();
+    pid.Id = 22001;                                                    // part number
+    filter.AddPropertyCondition(pid, MDObjectFilter.CompareOperator.OperatorNotEqual, "");
+    MDPart[] parts = db.GetParts(filter);                              // ✅ works
+    string nr = parts[0].PartNr;                                       // ✅ works
+    bool ok = db.ExportParts(exportFile, MDPartsDatabase.DataFormat.XML, parts); // 📘 (utility)
+}
+```
+This is how the utility writes macro paths onto articles (its `SETPARTMACRO`/
+`PARTFILTER` features). Part property IDs used in its filters: **22001** part number,
+**22002** type number, **22003** order number, **22051|index** free attributes,
+**22980** last editor. Custom (user‑defined) part properties are NOT supported by its
+filter.
+
+✅ **`MDPart` surface measured at runtime** (probe's reflection dump, 2026.0.3): scalars
+`PartNr`, `Variant`, `Type`, `AdoId`, `ProductGroup`/`ProductSubGroup`/
+`GenericProductGroup`; `Properties` (note: appears **twice** — as
+`MDPartsDatabaseItemPropertyList` and as `PropertiesAndHandleObjectPropertyList`;
+disambiguate by cast); and rich position arrays — `FunctionTemplatePositions`,
+`ConnectionPointInfo`, `AccessoryPositions`, `AssemblyPositions`, `SymbolPositions`,
+`ModulePositions`, `MountingPanelPositions`, `DoorPositions`, … Full dump in
+`%TEMP%\EPLAN_Scripts\Probe_MasterData.log`. **`FunctionTemplatePositions` +
+`ConnectionPointInfo` are notable** — a script can read a part's function definitions
+and connection points straight from the parts DB (relevant to the black‑box‑from‑
+datasheet goal).
+
+---
+
 ## 6. The DataModel object model — 🧰 reflection/add‑in only in simple scripts
 
 > **Read §0 first.** `Eplan.EplApi.DataModel`/`HEServices` can't be referenced in a simple
@@ -459,6 +663,10 @@ HEServices assemblies *are* loaded (their DLLs carry a `u` suffix: `Eplan.EplApi
   The script runtime can't create a LockingStep, which `GetCurrentProject` requires. So:
   > **The DataModel object model (`Project`/`Function`/properties) is ADD‑IN ONLY in a
   > simple script — for reads AND writes.** No reflection escape hatch.
+  >
+  > 📘 …but that bars only the **object model**, not the *data*: scripts can still write
+  > properties of **selected** objects via `XEsSetPropertyAction`/`XEsSetPagePropertyAction`
+  > and read anything exportable via `label`/External‑Editing round‑trips — see §5a.
 - For the record, the real signatures the validator dug out (use these in an **add‑in**):
   `FunctionsFilter` is `Eplan.EplApi.DataModel.FunctionsFilter` (*not* `…Filters.…`);
   `DMObjectsFinder` has `ctor(Project)`/`ctor()`; read overload `GetFunctions(FunctionsFilter)
@@ -577,6 +785,25 @@ and [ExportEngravingData.cs:148‑153](../ExportEngravingData.cs).
 Our convention is a tiny `Tell(string)` wrapper around an `eOkDecision` so a silent
 no‑op is never invisible.
 
+📘 **8‑arg overload** (Macro Utility, production): adds a suppression key ("don't show
+again"), a bool, and an icon:
+```csharp
+new Decider().Decide(EnumDecisionType.eOkDecision, text, title,
+    EnumDecisionReturn.eOK, EnumDecisionReturn.eOK,
+    "MyTool_Register()",                 // suppression/identification key
+    false,
+    EnumDecisionIcon.eINFORMATION);      // eINFORMATION icon enum exists
+```
+
+📘 **Full WinForms is available in scripts** — the Macro Utility hosts a complete
+`Form` subclass (grid, buttons, resize persistence) in the same `.cs`. To parent a
+dialog to the EPLAN main window, wrap the process handle:
+```csharp
+public class WindowWrapper : IWin32Window { /* wraps an IntPtr */ }
+var owner = new WindowWrapper(System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle);
+myForm.ShowDialog(owner);
+```
+
 ---
 
 ## 10. Multi‑language text — `MultiLangString`, `Languages`, `ISOCode`
@@ -636,6 +863,19 @@ text, action, bool, bool)` signature. Use whichever you like.
 goes to `AddMenuItem`. `DialogName`/`ContextMenuName` for *other* hosts must be
 discovered per dialog (📘 — use the Ctrl+\\ trick / extended action list, §17).
 
+**Known `DialogName`/`ContextMenuName` pairs**:
+
+| Host | `DialogName` | `ContextMenuName` | Status |
+|---|---|---|---|
+| Page navigator (tree view) | `PmPageObjectTreeDialog` | `1007` | ✅ ours (PageNavi script) |
+| Graphical editor (GED) context menu | `Editor` | `Ged` | ✅ **confirmed on 2026** (Probe_XEsSetProperty_Menu rendered + fired, 2026‑06‑10) |
+| 3D installation‑space navigator (tree) | `XCabPlacerTreePage` | `4010` | 📘 Macro Utility config |
+
+The Macro Utility drives all its context‑menu entries from an **XML settings file**
+(menu text per language `en_US@…;de_DE@…;`, action call string, separators, minimum
+EPLAN version, required license) and builds them in `[DeclareMenu]` — a good model for
+config‑driven menus.
+
 ### 11a. Ribbon buttons from a compiled add-in (`RibbonBar`)
 
 ✅ **Confirmed working pattern** (EPLAN 2026, [addin/Eplan.EplAddIn.ProjectCheck.cs](../addin/Eplan.EplAddIn.ProjectCheck.cs)).
@@ -677,7 +917,8 @@ Key facts (reflected from `Eplan.EplApi.Guiu.dll`):
   `AddTab → AddCommandGroup → AddCommand` chain is what works.
 
 > A rebuilt add-in DLL is held in memory until EPLAN fully **restarts**; if a restart
-> doesn't show the change, unload/reload the add-in in Utilities ▸ API ▸ Add-Ins.
+> doesn't show the change, unload/reload the add-in (EPLAN 2026:
+> **File ▸ Extras ▸ Interfaces ▸ API ▸ Manage**).
 
 ---
 
@@ -704,6 +945,12 @@ string folder = Eplan.EplApi.Base.PathMap.SubstitutePath("$(PROJECTPATH)");   //
   | `$(MD_MACROS)` | `C:\Users\Public\Eplan\Data\Macros\Massiv` |
   | `$(BIN)` | `C:\Program Files\EPLAN\Platform\2026.0.3\Bin` |
   | `$(EPLAN_VERSION)` | `2026.0.3` |
+
+- 📘 More variables used by the Macro Utility (unverified here): `$(TMP)` — temp folder
+  (its `label`‑export round‑trips write there); `$(EPLAN_VERSION_SHORT)`;
+  `$(ENVVAR_USERNAME)` — Windows username (its docs misspell it `ENVAR` once; the
+  working XML uses `ENVVAR`). Path variables also expand inside **action call strings**
+  (e.g. a macro version of `V$(EPLAN_VERSION_SHORT) / $(ENVVAR_USERNAME)`).
 
 - ✅ The project's document dir is `$(DOC)` = `.edb\DOC` — the EPLAN-standard folder name.
   Every export/log script writes here. (An earlier revision used a custom `.edb\DOCS`; that
@@ -742,6 +989,17 @@ Used identically in every export/log script here.
    — easy to forget.
 9. ⚠️ **API assemblies are version‑locked.** A script built against one EPLAN platform
    version may not load on another; match references to the installed version.
+10. ⚠️ **`Execute()` returning `True` ≠ the action did its job.** Proven by the XEs
+    probes: `XEsSetPropertyAction` returns `True` from `Scripts ▸ Run` while writing
+    nothing; the same call from a context‑menu action writes fine (§5a). Verify side
+    effects independently (export + grep, `File.Exists`, …).
+11. ⚠️ **Selection‑dependent actions need a selection‑preserving launch.** Context‑menu
+    actions see the right‑clicked GED selection; the `Scripts ▸ Run…` dialog evidently
+    drops it. Ship object‑level tools as `[DeclareMenu]` + `[DeclareAction]`, not as
+    bare `[Start]` scripts.
+12. ⚠️ **Action parameter names round‑trip lowercased; `GetParameter` is case‑sensitive.**
+    Read an action's output by its lowercase key (e.g. `propertyvalue`). Wrong case ⇒
+    silent empty (§4c, §5a).
 
 ---
 
@@ -791,11 +1049,33 @@ s.SetBoolSetting("USER.ModalDialogs.XSdCustomToolbarComponent.ExtendedActionList
 📘 **From Suplanus index** (verify signatures): `GetStringSetting(key, index)` /
 `SetStringSetting(key, value, index)`, `GetNumericSetting(key, index)` /
 `SetNumericSetting(key, n, index)`, `ReadSettings(xmlPath)` to import a settings XML, and
-the `XSettingsImport` action (params `Project`, `XmlFile`) for importing into a project
-(combine with `PathMap` `$(MD_SCRIPTS)` / `$(P)`).
+the `XSettingsImport` action for importing into a project (combine with `PathMap`
+`$(MD_SCRIPTS)` / `$(P)`). ✅ `XSettingsImport`'s declared parameters measured on 25625
+via the §17 metadata dump: **`XmlFile, src, Project, Node`**.
 
 ⚠️ Writing settings changes the user's EPLAN config **persistently**. If a change should
 be temporary, enable it in `[DeclareRegister]` and restore it in `[DeclareUnregister]`.
+
+### Custom settings as your tool's persistent storage 📘 (Macro Utility, production)
+
+Scripts can **create their own settings** under `USER.Custom.<ToolName>.*` and use them
+as cross‑action storage (the utility's "clipboard" for 3D macro data, last selected
+page, dialog size/position all live there):
+```csharp
+var s = new Eplan.EplApi.Base.Settings();
+if (!s.ExistSetting("USER.Custom.MyTool.LastPage"))
+    s.AddStringSetting("USER.Custom.MyTool.LastPage",
+        new string[] { }, new string[] { }, ISettings.CreationFlag.Insert);
+s.SetStringSetting("USER.Custom.MyTool.LastPage", pageName, 0);
+string v = s.GetStringSetting("USER.Custom.MyTool.LastPage", 0);
+s.DeleteSetting("USER.Custom.MyTool.LastPage");          // cleanup in [DeclareUnregister]
+```
+- 📘 `ExistSetting(path)`, `AddStringSetting(path, vals, infos, ISettings.CreationFlag.Insert)`,
+  `DeleteSetting(path)` — all called from a script.
+- The utility creates all its settings in an action called from `[DeclareRegister]` and
+  deletes them in `[DeclareUnregister]` — settings lifecycle == add‑on lifecycle.
+- This is the script‑world substitute for static state that must survive between
+  separate action invocations (each action call may run in a fresh instance).
 
 ## 16. Progress bars 📘 (Suplanus `PagePdf`, verbatim — interactive only)
 
@@ -829,6 +1109,29 @@ new Eplan.EplApi.Base.Settings()
 Pair it with **Ctrl+\\** (§2) to capture the exact internal action name behind any command
 you click — between the two you can reverse‑engineer almost any action call.
 
+**Programmatic action‑parameter discovery** ✅ (member chain reflected from `AFu.dll`
+2026.0.3; exercised by [Probe_XEsSetProperty.cs](../Probe_XEsSetProperty.cs) v2) — a
+script can enumerate any action's **declared parameter names**:
+```csharp
+Eplan.EplApi.ApplicationFramework.Action act = new ActionManager().FindAction("XEsGetPropertyAction");
+ActionProperties ap = act.ActionProperties;                       // property on Action
+System.Collections.ArrayList ps = ap.GetParameterProperties();    // ActionParameterProperties items
+foreach (object o in ps)
+{
+    ActionParameterProperties p = (ActionParameterProperties)o;
+    string name = p.Name;                                          // the real parameter name
+}
+```
+`Action` also exposes `Name`, `ModuleName`, `GetEnabled(ctx, string)`. This is the
+programmatic equivalent of the Extended Action List.
+
+⚠️ **Coverage is sparse** (measured 2026‑06‑09 on 25625): of 12 actions dumped, only
+`XSettingsImport` declared parameters (**`XmlFile, src, Project, Node`**) —
+`selectionset`, `export`, `label`, `renumber`, `generate`, `partslist`, the `XEs*`
+property actions and our own add‑in actions all report *(no declared parameters)*.
+Most built‑in (C++) actions simply don't publish metadata, so the Extended Action List
+UI / Ctrl+\\ remain the better discovery tools for those.
+
 **Attaching a debugger** 📘 (Suplanus index — the full page is paywalled; API names only):
 - Enable script debugging via the setting `USER.EplanEplApiScriptLog.DebugScripts` (set in
   `[DeclareRegister]`, restore in `[DeclareUnregister]`).
@@ -860,6 +1163,46 @@ this repo. Mirror: `github.com/mensong/EplanScriptingProject-EPlan-Examples`. Ma
 ⚠️ Some files are VB (`.vb`), and several touch APIs that need verifying against your
 platform version. High‑quality reference, not guaranteed drop‑in.
 
+## 18a. EPLAN Consulting Macro Utility — local production example 📘
+
+A 4 700‑line **production script** by EPLAN Consulting for macro‑project authoring
+(sets macro name/description/version/variant on macro boxes, pages, 3D spaces and drill
+patterns from the page structure, and writes macro paths back onto parts). Local copy:
+`C:\Users\bedar\Downloads\Fichiers (5)\eBuild_Training\eBuild_Training\EplanConsulting_MacroUtility_V2.0.1\`
+(`BIN\EplanConsulting_MacroUtility_V2.0.cs` + `BIN\MacroUtilitySettings.xml`,
+`CFG\install.xml` + labeling/External‑Editing helper schemes). Documented in
+`Documents\EPLAN Consuling - Macro Utility.pdf`. Targeted at platform **2022/2023**
+(`install.xml` gates on `2022.*.*`/`2023.*.*` — would need editing to register on 2026).
+
+Why it matters to us — beyond the patterns already folded into §0/§2/§5a/§9/§11/§15:
+
+1. **Scripts can ship as registered add‑ons.** Layout: `BIN\` (the `.cs` + its settings
+   XML, which must sit next to the script), `CFG\` (`install.xml`, a
+   `#<Name>_SCRIPT.xml` control file, helper schemes auto‑imported at registration).
+   Register via **File ▸ Extras ▸ Interfaces ▸ Add‑ons ▸ Manage** on EPLAN 2026 (pick
+   `install.xml`, tick *Registered*, restart; the utility's own PDF cites the older
+   File ▸ Settings path), or company‑wide auto‑registration (File ▸ Settings ▸ Company ▸
+   Manage ▸ Add‑ons → folder containing `install.xml`). `install.xml` declares the
+   add‑on name, version, and **per‑license version gates** (license codes seen: 700
+   Electric P8, 703 Fluid, 565 ProPanel).
+2. **Config‑driven everything**: its XML defines the context‑menu entries (per‑language
+   text, action call string with all parameters, separators, `validsinceversion`,
+   required `license`). The XML is read **once at EPLAN start** — edits need a restart
+   (same reload discipline as script edits, §13).
+3. **Registered actions** (callable once the add‑on is loaded): `SetMacroName`,
+   `Paste3DMacroData`, `InsertModelView`, `CreateOptionalElement`,
+   `CreateOverlayGraphic`, `GetProjectNumberingMode`, `MacroUtility_CreateAllSettings`,
+   `MacroUtility_DeleteAllSettings`. Parameter style is the standard `/KEY:"value"`
+   form, e.g. `SetMacroName /EXTENSION:".ema" /GETFOLDERFROMLEVEL:"1|2|3|4"
+   /GETNAMEFROMLEVEL:"4|6" /NAMELIMITER:"." /SETMACRONAME:"1" /MACROINDEX:"1"
+   /SETMACROVARIANT:"1" /SETMACRODESCRIPTION:"1" /SETPARTMACRO:"1"
+   /PARTFILTER:"22001='MACRONAME'" /WHERE:"Macrobox"`.
+4. **Macro‑name automation logic** worth stealing: folder structure from structure
+   identifiers (`GETFOLDERFROMLEVEL`, pipe‑separated levels), name from levels +
+   `NAMELIMITER`, invalid filename chars (`\ / : * ? " < > |`) replaced via setting,
+   page name → variant letter (1→A, 2→B…), `WHERE:` targets `Macrobox` /
+   `Macrobox_manually` / `Page` / `3D` / `NC`.
+
 ## 19. Worked examples in this repo
 
 | Script | Demonstrates |
@@ -872,6 +1215,9 @@ platform version. High‑quality reference, not guaranteed drop‑in.
 | [ExportEngravingData.cs](../ExportEngravingData.cs) | ⛔ **DEPRECATED** — never compiled as a simple script (uses `DMObjectsFinder`/`SelectionSet`, §0); superseded by the `EngravingDataExport` add-in action |
 | [addin/Eplan.EplAddIn.EngravingData.cs](../addin/Eplan.EplAddIn.EngravingData.cs) | **Compiled add-in**: `IEplAddIn` + two `IEplAction` (engraving export/import), full DataModel read+write, `MultiLangString` round-trip, CSV helpers |
 | [addin/Eplan.EplAddIn.ProjectCheck.cs](../addin/Eplan.EplAddIn.ProjectCheck.cs) | **Compiled add-in**: `ProjectCheck` action (single-pass per-DT checks) **and** owner of the EPLANCA ribbon tab (`AddDelayedAction` + `AddTab`/`AddCommandGroup`/`AddCommand`) |
+| [Probe_MasterData.cs](../Probe_MasterData.cs) | **Probe, ✅ ran 2026‑06‑09**: proved `using Eplan.EplApi.MasterData;` compiles in the script host; reads the parts DB (542 parts) + dumps the `MDPart` surface to `%TEMP%\EPLAN_Scripts\Probe_MasterData.log` |
+| [Probe_XEsSetProperty.cs](../Probe_XEsSetProperty.cs) | **Probe, v1+v2 ✅ ran 2026‑06‑09**: XEsGet/Set/SetPage all EXIST; §17 param‑metadata dump (sparse); **CSV self‑verification proved the write does NOT land via `Scripts ▸ Run` despite `True`** |
+| [Probe_XEsSetProperty_Menu.cs](../Probe_XEsSetProperty_Menu.cs) | **Probe v3+v4 ✅ ran 2026‑06‑10 — write AND read CONFIRMED**: GED menu (`Editor`/`Ged`) → `[DeclareAction]` wrote 20011 + 20025 (CSV `True`) and read them back via `XEsGetPropertyAction` (output `propertyvalue`, found by `Context.GetParameters()` enumeration). Proves the §5a read+write path, the menu IDs, and the param‑name lowercasing trap |
 | [ValidateApi.cs](../ValidateApi.cs) | **Validation harness** (interactive, read‑only): reflection probes of uncertain APIs + runtime probes of project/DataModel/properties/settings/paths/action‑return‑values; writes `DOC\ValidateApi.log` |
 | [ValidateApi_eBuild.cs](../ValidateApi_eBuild.cs) | **Validation probe** (Script‑Typical): does the DataModel work during eBuild generation? logs to `DOC\ValidateApi_eBuild.log` |
 
@@ -887,6 +1233,11 @@ platform version. High‑quality reference, not guaranteed drop‑in.
   `ExtendedActionList`, `PagePdf`, `GetProjectProperty` quoted above came from there) and
   the attributes page (event handlers, register/unregister, the Ctrl+\\ trick).
 - `github.com/musray/PDFPerLocation` — PDF export per location example.
+- **EPLAN Consulting Macro Utility V2.0.1** (shipped script add‑on + PDF manual, local
+  copy — §18a): source of the §5a write/read patterns, MasterData allowlisting, event
+  names, context‑menu IDs, custom‑settings storage, add‑on registration format.
+- **eBUILD training material** (local PDFs): *3‑00 eBUILD Trainingsbook V2* (128 p.) and
+  *eBUILD Library Rules / Style Guide* (2020‑09‑21) — mostly feeds the eBuild doc.
 - This repo's working scripts + project memory note `eplan-ebuild-script-context`
   (the ✅ items).
 
