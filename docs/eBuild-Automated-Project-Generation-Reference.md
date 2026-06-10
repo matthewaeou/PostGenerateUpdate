@@ -63,6 +63,125 @@ your Designer version):
 
 ---
 
+## 2a. Designer model — from the official trainingsbook 📘
+
+Source: *3‑00 eBUILD Trainingsbook V2* (EPLAN training, 128 p., local PDF). All 📘 —
+authoritative for concepts, but UI details may shift between eBUILD releases.
+
+**Object model.** A **Macro‑Typical (MT)** is a container that calls macros and holds
+their configuration (one MT ≈ one function/page of the machine). A **Typical‑Group
+(TG)** groups MTs and other TGs. A **Configurator** is what the Project Builder user
+runs; it bundles MTs/TGs. Roles: *Designer* (Designer + Project Builder) vs *User*
+(Project Builder only). Product tiers: eBUILD **Free** (Project Builder + free
+libraries), **Designer**, **Project Builder**.
+
+**Configuration variables (CVs)**: types `Integer`, `Double`, `String`, `Boolean`;
+per‑CV options — *Display name* (what the Project Builder shows), *Mandatory* (input
+marked `*`), *Visibility* (show the field only under a condition), *Selection values*
+(dropdown; free entry then disabled). ⚠️ Type matters in formulas: `1+2` is `3` for
+Integers but `12` (concatenation) for Strings.
+
+**Macro entry in an MT** — the per‑macro panel is *Status* (generate or not — formula
+allowed), *Position*, *Structure* (structure identifiers via formulas), *Variables*
+(macro/placeholder variables via formulas), *References* (usage points).
+
+**Positioning** (window `.ema` / symbol `.ems` only; page macros `.emp` have no
+position): *Apply from macro* (insertion point stored in the macro), *Absolute*
+(X/Y, formula‑capable), *Sequential* (Direction + Offset **relative to the edge of the
+preceding macro's macro box** — not available for the first macro in the list).
+
+**Formula language** (in Status/Structure/Variables fields): leading `=`; string
+literals in single quotes; `+` concatenates strings / adds numbers; `!` negates a
+Boolean; `==`, `||`, `<` comparisons; `=if(cond) then 'a' else 'b' endif` with
+`else if` chains; **Ctrl+Space** code completion in the editor.
+
+**Internal variables** (instantiation):
+
+| Variable | Type | Meaning |
+|---|---|---|
+| `_elementindex_` | Integer | position of the element in the element list |
+| `_index_` | Integer | index of the current instance, **0‑based** |
+| `_count_` | Integer | total number of instances |
+| `_first_` / `_last_` | Boolean | true on first / last instance |
+| `_even_` | Boolean | true on even indices |
+
+Worked idioms from the training solutions: `='MA'+index`,
+`=_elementindex_+1`, `=_index_+1<_count_` (power line continues except on last axis),
+`=((_index_+1)==2)||((_index_+1)==3)` (option only on axes 2 and 3).
+
+**Three library‑design methods**: *additive* (minimal fragment TG + add MTs),
+*subtractive* (maximal TG; hide elements via Status), *instantiation* ("smart" — one
+TG instantiated N times; leave a called variable **empty** to surface it as a Project
+Builder input per instance; instances added with the `+` button in Project Builder).
+
+**Synchronization** ⚠️: after editing macros in the P8 macro project, you must
+**Synchronize (update) the whole library** in the Designer or eBUILD keeps using stale
+macro copies — the library holds copies, not live references. (Same family of trap as
+the script reload in §2.)
+
+**Placeholders** ⚠️: the **placeholder object name is the identity** for variable
+assignment — renaming a placeholder afterwards **resets its variable assignment** in
+eBUILD. Identically‑named placeholders group together in the Designer.
+
+---
+
+## 2b. Library authoring rules — the eBUILD Style Guide 📘
+
+Source: *eBUILD Library Rules* (EPLAN Style Guide, release 2020‑09‑21, written for
+platform 2.9 SP1 — conventions, not APIs, so still applicable). Matters to us when
+reading/diagnosing the macro project a configurator is built on.
+
+**Library naming**: `eBUILD-Library_<VC>_<LD>_<LC>_<SC>` — Version Code (P8 version,
+e.g. `V29SP1`), Library Description, Language Code (`de-DE` — only needed if selection
+lists are language‑bound), Standard Code (`IEC`/`NFPA`…, must match the master data).
+Project description property `<10011>` carries `{{eBUILD Library: …}}`.
+
+**Hard rules** (because nothing can be assumed about the target project): no new
+layers, no own user supplementary fields, no new named display‑property arrangements;
+all non‑translatable texts in English; think hard before using "From layer" graphical
+formats.
+
+**Macro boxes**:
+- eBUILD macro boxes are needed **only in the library project** — set **"Also insert
+  macro box: No"** so they don't land in the generated target project. (Trick: with
+  *Type of usage: Referencing* the option is greyed — temporarily set *Defining*, set
+  the option, set back.)
+- Macros placed by eBUILD **cannot be meaningfully updated** by P8's *Update macros…* —
+  another reason the boxes shouldn't survive into the target project.
+- **Never modify existing parts macros** to add placeholders — wrap them in a **nested
+  macro box** (outer box for eBUILD with the placeholders; inner box keeps the original
+  parts macro updatable, placeholders associate to the nested macro's functions).
+
+**Placeholder taxonomy** (the Style Guide's three use cases + one opt‑out):
+
+| Type | Naming | Kept after generation? |
+|---|---|---|
+| Generation‑only (fills properties, no value sets) | `[Purpose]`, identical names group in Designer | No |
+| Permanent value‑set control (user re‑selects value sets later) | `#<SEL_[Purpose]>` | **Yes** |
+| Temporary value‑set control (value sets just to bundle variables) | `#<SEL_[Purpose]>`, description `[generation only]` | No |
+| Ignored by eBUILD | any — deactivate **"Use placeholders in EPLAN Cogineer"** on the placeholder | n/a |
+
+**CV naming convention** (System Hungarian — justified because a CV's type can never
+be changed after creation): prefixes `n` Integer, `b` Boolean, `s` String
+(non‑translatable), `sml` String (multilanguage/translatable), `d` Double; `sel_`/`Sel_`
+prefix for pre‑defined value lists (`sel_sMachineType`); suffix `ProjProp` marks a
+**project**‑property variable (no suffix ⇒ function property). Common abbreviations:
+FT (function text), HL/ML (higher‑level function / mounting location), DocType, DT
+(device tag), IP (interruption point), Desig, Descr, Conn/ConnP, Opt, Txt, PageDescr;
+two‑digit counters for repeats (`sConnP_Desig_01`).
+
+**MT/TG naming**: prefix `MT_` / `TG_` — the Designer has **no search/filter**, names
+are the only navigation.
+
+**`$(DOC)` transfer** 📘: files in the **base project's** `$(DOC)` directory are
+transferred to the **target project's** `$(DOC)` when generating — i.e. our log/export
+folder is also eBUILD's sanctioned channel for shipping files into generated projects.
+
+**Markdown/info file**: written in HTML; should cover Description,
+Prerequisites/Recommendations, Release Notes.
+
+---
+
 ## 3. Project Builder: configuring a generation run
 
 📘 (from docs + general use):
@@ -97,7 +216,9 @@ Rules:
 - ✅ **`ProjectName` is auto‑injected** by the generator — the full path to the `.elk`
   (e.g. `C:\…\MyProject.elk`), **not** the `.edb` folder.
 - ✅ **Do NOT declare `ProjectName` as a Designer parameter.** It is reserved; declaring
-  it breaks the binding. (Project memory + research agree.)
+  it breaks the binding. (Project memory + research agree — and now the **official
+  trainingsbook confirms it verbatim**: "The ProjectName is automatically filled by
+  eBUILD and it is not necessary to transfer it as a parameter into Script‑Typicals.")
 - ✅ **Unattended context**: no `SelectionSet`, no `Decider`/dialogs. Everything is
   driven through `CommandLineInterpreter` actions and logged to a file.
 - ✅ The method name is irrelevant; `[Start]` + the `string` parameter is what matters.
@@ -134,6 +255,22 @@ public void RunFromEBuild(string ProjectName, string Voltage, int Count) { … }
 
 Verify the injection order and type coercion (e.g. `int` vs `string`) with a throwaway
 Script‑Typical that just logs its arguments before relying on this for real work.
+
+📘 From the trainingsbook, the Script‑Typical panel in the Designer is: **Status**
+(formula‑controlled, like a macro — a script can be conditionally skipped), **Script**
+(content **preview only — scripts cannot be edited in the Designer**; re‑upload the
+`.cs` to change it), **Parameters** (fixed values or formulas over configuration
+variables), **References**. The training course wires its PDF‑export script by creating
+a CV (e.g. `PDFEXPORTFILE`) on the TG and binding it to the script parameter — exactly
+the §5 pattern. It also warns to **copy/paste parameter names** into the Designer to
+avoid case/spelling drift.
+
+📘 **Official example Script‑Typicals exist in eBUILD Free** — library
+`3.-GEN-eBUILD-Script-Examples_en-US_mm`, with sources installed under
+`…\EPLAN\Data\Scripts\EPL\eBUILD\` (e.g. `eBUILD_ExportPDF.cs`,
+`eBUILD_ReNumberTerminals.cs`, and the training's `eBUILD_HalloWelt.cs` /
+`eBUILD_SayMyName.cs`). Worth diffing against our scripts — they are EPLAN's own
+reference implementations of the same contract.
 
 ---
 
@@ -235,6 +372,18 @@ cli.Execute("renumber /TYPE:CONNECTIONS " +                      // 3) wire numb
 - ⚠️ `/CONFIGSCHEME` names are **case‑sensitive** and must exist in the template project.
 - ⚠️ `generate /TYPE:NUMBERING` is **not a thing** — numbering is `renumber`.
 
+### ⚠️ Terminal (re)numbering is structurally broken in generated projects 📘
+
+From the trainingsbook (bonus chapter, stated as a known limitation): **eBUILD places
+macros with insertion mode "Do not modify"**. With that mode, *Terminal: Device
+position* and *Sort code (terminal/pin)* do **not** carry over from one inserted macro
+to the next — so terminals from repeated macros can't be renumbered correctly
+afterwards, **neither by a script nor by P8's "Number terminals" function**. The
+training's own `eBUILD_ReNumberTerminals.cs` Script‑Typical hits this wall. Device tags
+and wire numbers (our §8 recipe) are unaffected. If correct ascending terminal
+numbering matters, design it into the macros instead (one macro per terminal count, or
+placeholder formulas — the trainingsbook's "approach 2"/"approach 1").
+
 Full action‑parameter detail is in the scripting reference, §5.
 
 ---
@@ -272,6 +421,9 @@ This is the **resolved** state of a long debugging saga (memory):
 > Historical note: the docs you'll find online often say "PDF/print engine isn't
 > available during generation." In **our** testing that turned out to be **false** once
 > the `TYPE` and scheme name were correct. Keep the fallback below only as insurance.
+> 📘 Further confirmation: EPLAN's own `eBUILD_ExportPDF.cs` (official examples library,
+> §5) does PDF export as a Script‑Typical — in‑context PDF export is *supported*, not a
+> hack.
 
 ### Fallback: interactive finalize ✅
 [FinalizeProject_Manual.cs](../FinalizeProject_Manual.cs) does the same label + PDF
@@ -281,16 +433,44 @@ export ever regresses in‑context; **not wired into eBuild.**
 
 ---
 
-## 10. Command‑line / batch invocation 📘 ⚠️
+## 10. Headless / batch generation — "Silent mode" 📘 (now documented!)
 
-The research reported EPLAN can be driven headless, e.g.:
-```text
-eplan.exe /NoSplash /Frame:"0" /Auto  <action> <parameters…>
-```
-with `/Auto` to exit afterward and `/Frame:"0"` for no window. ⚠️ **Unverified in our
-environment** and the exact switches vary by version/product — confirm against
-`eplan.help` "command line parameters" for your installed platform before scripting a
-batch pipeline. For now, generation is driven from the Project Builder UI/queue.
+The trainingsbook (ch. 6) documents official **silent generation**: a batch file runs
+the generation **without opening EPLAN / the Project Builder UI**. The batch invokes an
+executable with these parameters (each documented in the course; `^` is just cmd.exe
+line continuation):
+
+| Parameter | Meaning |
+|---|---|
+| file path | path + name of the executable to run silently |
+| **token** | a **Silent‑mode token** identifying you to the software (obtained from the eBUILD UI) |
+| library | name of the library containing the element to generate |
+| configurator | name of the configurator |
+| storage location | where the target project goes (only for a **new** target project) |
+| target project | name of the target project |
+| template | project template (only for a new target project) |
+| configuration file | path to the **XML or XLSX** file with the configuration values |
+| overwrite | `1` = overwrite an existing project, `0` = don't |
+
+⚠️ Exact executable name/switch spellings aren't captured in the slide text (they're in
+the screenshots) — pull them from the training batch file
+`…\Attendee_Material_Part_03-06\GenerateProject_wSilentMode.bat` before building a
+pipeline. The older `eplan.exe /NoSplash /Frame:"0" /Auto …` framing from web research
+is a different (action‑level) mechanism and remains unverified.
+
+### Configuration via XML/XLSX 📘
+- Project Builder configurations can be **exported to / imported from XLSX or XML** —
+  the "Excel‑Configurator" pattern: export, set values in Excel, re‑import, generate.
+  This is also the input format silent mode consumes.
+- Whole **libraries export/import as `.ela` files** (the training uses this to
+  snapshot/rename libraries between exercises).
+
+### EEC One → eBUILD 📘
+A **File Import Feature Add‑in** (download: eplan‑software.com ▸ downloads ▸
+eplan‑cogineer) lets the Project Builder build a project from an **EEC One XLSX
+export**. Setup: register the add‑in, then create a **Personal Access Token** with your
+EPLAN ID (organization must hold the eBUILD product; token shown once) and store it in
+the Project Builder.
 
 ---
 
@@ -312,8 +492,15 @@ batch pipeline. For now, generation is driven from the Project Builder UI/queue.
    throws. Use actions or a compiled add‑in for object‑model work.
 10. ⚠️ **`selectionset TYPE=PROJECT` returns the MACRO project**, not the generated one —
     always use the injected `ProjectName` to reference the generated project (§6).
-10. ⚠️ **Check action `bool` returns + verify side effects on disk** — failures are
+11. ⚠️ **Check action `bool` returns + verify side effects on disk** — failures are
     silent.
+12. 📘 **Terminal renumbering can't be fixed post‑generation** — eBUILD inserts macros
+    with "Do not modify", losing terminal device position / sort code (§8). Solve it in
+    the macro design, not in a script.
+13. 📘 **Synchronize the library after editing macros in P8** — eBUILD works on copies;
+    un‑synced libraries generate stale macros (§2a).
+14. 📘 **Don't rename placeholder objects** — the name is the assignment key; renaming
+    resets the variable binding in the Designer (§2a/§2b).
 
 ---
 
@@ -342,9 +529,13 @@ generation (2026‑06‑08, build 25625). Log: `<project>.edb\DOC\ValidateApi_eB
   template** project path, **not** the generated project. Always use the injected
   `ProjectName` parameter for the generated project path.
 - 📘 **Extra parameter injection** — confirm bound config‑variable values arrive as
-  method args in declared order, with expected types (§5).
-- 📘 **Headless invocation** — whether the Project Builder/generation can be triggered
-  from the command line for true batch runs (§10).
+  method args in declared order, with expected types (§5). The trainingsbook's
+  `eBUILD_SayMyName.cs` exercise demonstrates exactly this — partially de‑risked, still
+  unverified in our setup.
+- 📘 **Headless invocation — ANSWERED in principle (§10):** official "silent mode"
+  exists (batch + token + library/configurator + XML/XLSX config). Remaining unknown:
+  the exact executable/switch spellings (in the training `.bat`, not the slide text)
+  and whether our Script‑Typicals run identically in a silent run.
 - 📘 **Multi‑script ordering & failure isolation** — does one failing Script‑Typical
   stop the rest?
 
@@ -355,6 +546,14 @@ generation (2026‑06‑08, build 25625). Log: `<project>.edb\DOC\ValidateApi_eB
 - EPLAN Help / Infoportal — eBuild "Script‑Typicals: Basics", "Project Builder: Basics",
   action references (`renumber`, `export`, `label`), command‑line parameters
   (`eplan.help`).
+- **eBUILD training material** (local PDFs, read 2026‑06‑09):
+  `…\Downloads\Fichiers (5)\eBuild_Training\eBuild_Training\` —
+  *3‑00 eBUILD Trainingsbook V2* (§2a, §5, §8 terminal caveat, §10 silent mode/EEC One)
+  and *eBUILD Library Rules / Style Guide 2020‑09‑21* (§2b). Training attendee material
+  (`Attendee_Material_*`) referenced by the book includes the silent‑mode `.bat` and the
+  example macro project `[EES]_Master_Macro_project_EES_Stacking_System_Part2.zw1`.
+- **EPLAN Consulting Macro Utility V2.0.1** (macro‑authoring script add‑on + manual) —
+  patterns folded into the scripting reference §5a/§18a.
 - `github.com/musray/PDFPerLocation`; Suplanus EPLAN scripting guide.
 - This repo's eBuild Script‑Typicals + project memory note
   `eplan-ebuild-script-context` (every ✅ here).
